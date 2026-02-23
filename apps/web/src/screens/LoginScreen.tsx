@@ -2,6 +2,7 @@ import { FormEvent, type CSSProperties, useState } from "react";
 import { createClient, type Session, type User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { brandPalette, elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
+import { webConfig } from "../config/env";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -11,6 +12,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "");
+
+const fallbackRedirectTo = `${window.location.origin}/auth/callback`;
+const oauthRedirectTo = webConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
 
 const mapResult = (user: User, session: Session): ProviderLoginResult => ({
   linked: false,
@@ -73,10 +77,9 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   };
 
   const handleGoogleOAuth = async () => {
-    const redirectTo = `${window.location.origin}/auth/callback`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo }
+      options: { redirectTo: oauthRedirectTo }
     });
 
     if (error) {

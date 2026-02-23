@@ -25,6 +25,24 @@ Override variables per platform:
 - `EXPO_PUBLIC_API_URL`
 - `EXPO_PUBLIC_AUTH_CLIENT_ID`
 
+## Supabase Authentication dashboard alignment
+
+Apply these Supabase Dashboard settings per environment (`dev`, `stage`, `prod`) under **Authentication**:
+
+1. Enable **Email** provider (email/password sign-in enabled).
+2. Enable **Phone** provider and configure **Twilio** SMS credentials.
+3. Enable **Google** provider with Google Cloud OAuth client ID and client secret.
+4. Disable **Apple** provider.
+5. Configure allowed redirect URLs to include:
+   - Web callback URLs (`<web-origin>/auth/callback`)
+   - Mobile deep-link callback URLs (`<scheme>://auth/callback`)
+6. Verify **Site URL** and **Additional Redirect URLs** include all `dev`/`stage`/`prod` endpoints.
+
+Frontend redirect/deep-link sources must exactly match Supabase dashboard values:
+
+- **Web OAuth redirect**: `VITE_SUPABASE_AUTH_REDIRECT_URL` (fallback: `${window.location.origin}/auth/callback`).
+- **Mobile OAuth redirect**: `EXPO_PUBLIC_SUPABASE_AUTH_REDIRECT_URL` (fallback derived from `EXPO_PUBLIC_SUPABASE_AUTH_DEEP_LINK_SCHEME` and `auth/callback`).
+
 ## Auth service module
 
 A new shared auth module lives at `services/auth` and provides:

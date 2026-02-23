@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, type Session, type User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { mobileConfig } from "../config/env";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -54,6 +55,11 @@ type LoginScreenProps = {
 };
 
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
+  const fallbackRedirectTo = Linking.createURL("auth/callback", {
+    scheme: mobileConfig.supabaseAuthDeepLinkScheme
+  });
+  const redirectTo = mobileConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
+
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
@@ -61,14 +67,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Not signed in");
 
-
   const saveResult = (result: ProviderLoginResult) => {
     onSignedIn(result);
     setStatus(`Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`);
   };
 
   const handleOAuth = async (provider: "google") => {
-    const redirectTo = Linking.createURL("auth/callback");
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
