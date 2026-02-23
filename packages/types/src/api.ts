@@ -90,3 +90,102 @@ export type FinalizeAvatarUploadRequest = {
     bytes: number;
   };
 };
+
+export type ContentMediaItem = {
+  id: string;
+  kind: MediaKind;
+  title: string;
+  description?: string;
+  author?: string;
+  metadata?: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContentMediaUnit = {
+  id: string;
+  mediaItemId: string;
+  title?: string;
+  chapterNumber?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  releaseOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GroupMediaSelection = {
+  id: string;
+  groupId: string;
+  mediaItemId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UserProgressState = {
+  id: string;
+  userId: string;
+  groupId: string;
+  mediaItemId: string;
+  highestUnitOrder: number;
+  highestUnitId?: string;
+  version: number;
+  updatedAt: string;
+};
+
+export type ContentPost = {
+  id: string;
+  groupId: string;
+  mediaItemId: string;
+  authorId: string;
+  previewText: string;
+  body: string;
+  requiredUnitId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FeedPost = {
+  postId: string;
+  authorId: string;
+  createdAt: string;
+  previewText: string;
+  unitReference: string;
+  requiredUnitId: string;
+  unlocked: boolean;
+  body?: string;
+  actions: {
+    markAsRead: {
+      label: "Mark as read/watched";
+      style: "green-check";
+      enabled: boolean;
+      targetUnitId: string;
+    };
+  };
+};
+
+export type FeedResponse = {
+  groupId: string;
+  mediaItemId: string;
+  progress: UserProgressState;
+  posts: FeedPost[];
+};
+
+export type MarkProgressResponse = {
+  progress: UserProgressState;
+  unlockedPostIds: string[];
+  rollback: {
+    token: string;
+    expiresAt: string;
+  };
+};
+
+export type RollbackProgressRequest = {
+  rollbackToken: string;
+};
+
+export type RollbackProgressResponse = {
+  progress: UserProgressState;
+  relockedPostIds: string[];
+};

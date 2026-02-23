@@ -1,0 +1,114 @@
+export type MediaKind = "book" | "show";
+
+export interface MediaItem {
+  id: string;
+  kind: MediaKind;
+  title: string;
+  description?: string;
+  author?: string;
+  metadata?: Record<string, string>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MediaUnit {
+  id: string;
+  mediaItemId: string;
+  title?: string;
+  chapterNumber?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  releaseOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupMediaSelection {
+  id: string;
+  groupId: string;
+  mediaItemId: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserProgress {
+  id: string;
+  userId: string;
+  groupId: string;
+  mediaItemId: string;
+  highestUnitOrder: number;
+  highestUnitId?: string;
+  version: number;
+  updatedAt: string;
+}
+
+export interface Post {
+  id: string;
+  groupId: string;
+  mediaItemId: string;
+  authorId: string;
+  previewText: string;
+  body: string;
+  requiredUnitId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProgressAuditEvent {
+  id: string;
+  userId: string;
+  groupId: string;
+  mediaItemId: string;
+  previousUnitOrder: number;
+  previousUnitId?: string;
+  nextUnitOrder: number;
+  nextUnitId?: string;
+  previousVersion: number;
+  nextVersion: number;
+  reason: "mark_read" | "rollback";
+  rollbackOfAuditId?: string;
+  rollbackToken?: string;
+  rolledBackByAuditId?: string;
+  createdAt: string;
+}
+
+export interface FeedPostView {
+  postId: string;
+  authorId: string;
+  createdAt: string;
+  previewText: string;
+  unitReference: string;
+  requiredUnitId: string;
+  unlocked: boolean;
+  body?: string;
+  actions: {
+    markAsRead: {
+      label: "Mark as read/watched";
+      style: "green-check";
+      enabled: boolean;
+      targetUnitId: string;
+    };
+  };
+}
+
+export interface FeedResponse {
+  groupId: string;
+  mediaItemId: string;
+  progress: UserProgress;
+  posts: FeedPostView[];
+}
+
+export interface MarkProgressResult {
+  progress: UserProgress;
+  unlockedPostIds: string[];
+  rollback: {
+    token: string;
+    expiresAt: string;
+  };
+}
+
+export interface RollbackResult {
+  progress: UserProgress;
+  relockedPostIds: string[];
+}
