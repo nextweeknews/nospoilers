@@ -6,9 +6,12 @@ import {
   type EnvironmentConfig
 } from "@nospoilers/types";
 
-const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
+const readViteEnv = (key: string): string | undefined => {
+  const importMeta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  return importMeta.env?.[key];
+};
 
-const rawEnvironment = env.VITE_APP_ENV;
+const rawEnvironment = readViteEnv("VITE_APP_ENV");
 
 const activeEnvironment: AppEnvironment = isAppEnvironment(rawEnvironment)
   ? rawEnvironment
@@ -18,6 +21,6 @@ const defaults = ENVIRONMENT_CONFIGS[activeEnvironment];
 
 export const webConfig: EnvironmentConfig & { environment: AppEnvironment } = {
   environment: activeEnvironment,
-  apiBaseUrl: env.VITE_API_URL ?? defaults.apiBaseUrl,
-  authClientId: env.VITE_AUTH_CLIENT_ID ?? defaults.authClientId
+  apiBaseUrl: readViteEnv("VITE_API_URL") ?? defaults.apiBaseUrl,
+  authClientId: readViteEnv("VITE_AUTH_CLIENT_ID") ?? defaults.authClientId
 };
