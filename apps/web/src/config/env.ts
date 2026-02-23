@@ -21,14 +21,14 @@ const defaults = ENVIRONMENT_CONFIGS[activeEnvironment];
 
 export const webConfig: EnvironmentConfig & {
   environment: AppEnvironment;
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
   supabaseAuthRedirectUrl?: string;
 } = {
   environment: activeEnvironment,
   apiBaseUrl: readViteEnv("VITE_API_URL") ?? defaults.apiBaseUrl,
   authClientId: readViteEnv("VITE_AUTH_CLIENT_ID") ?? defaults.authClientId,
-  supabaseUrl: readViteEnv("VITE_SUPABASE_URL"),
-  supabaseAnonKey: readViteEnv("VITE_SUPABASE_ANON_KEY"),
+  supabaseUrl: readViteEnv("VITE_SUPABASE_URL") ?? defaults.supabaseUrl,
+  supabaseAnonKey: readViteEnv("VITE_SUPABASE_ANON_KEY") ?? defaults.supabaseAnonKey,
   supabaseAuthRedirectUrl: readViteEnv("VITE_SUPABASE_AUTH_REDIRECT_URL")
 };
