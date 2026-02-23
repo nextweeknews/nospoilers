@@ -149,7 +149,10 @@ export class AuthService {
     return { ...user };
   }
 
-  async updateProfile(userId: string, updates: { displayName?: string; username?: string }): Promise<AuthUser> {
+  async updateProfile(
+    userId: string,
+    updates: { displayName?: string; username?: string; themePreference?: "system" | "light" | "dark" }
+  ): Promise<AuthUser> {
     const users = await this.getUsers();
     const usernameIndex = await this.getUsernameIndex();
     const reservations = await this.getUsernameReservations();
@@ -187,6 +190,13 @@ export class AuthService {
 
     if (typeof updates.displayName === "string") {
       user.displayName = updates.displayName.trim();
+    }
+
+    if (typeof updates.themePreference === "string") {
+      user.preferences = {
+        ...(user.preferences ?? {}),
+        themePreference: updates.themePreference
+      };
     }
 
     user.updatedAt = new Date().toISOString();
