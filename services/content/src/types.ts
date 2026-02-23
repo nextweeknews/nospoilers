@@ -49,9 +49,34 @@ export interface MediaItem {
   title: string;
   description?: string;
   author?: string;
+  artworkUrl?: string;
+  creator?: string;
+  externalIds?: Partial<Record<ExternalIdentifierType, string>>;
+  metadataCompleteness?: "complete" | "partial" | "manual";
   metadata?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ExternalIdentifierType = "isbn" | "imdb" | "tmdb" | "tvdb" | "asin";
+
+export interface MediaSearchResult {
+  media: MediaItem;
+  matchedOn: "title" | ExternalIdentifierType;
+  query: string;
+}
+
+export interface MediaSearchResponse {
+  query: string;
+  results: MediaSearchResult[];
+  cached: boolean;
+}
+
+export interface GroupMediaNavigationPayload {
+  groupId: string;
+  activeMediaId?: string;
+  title?: string;
+  artworkUrl?: string;
 }
 
 export interface MediaUnit {

@@ -5,6 +5,8 @@ export type GroupProgress = {
 
 export type MediaKind = "book" | "show";
 
+export type ExternalIdentifierType = "isbn" | "imdb" | "tmdb" | "tvdb" | "asin";
+
 export type MediaItem = {
   id: string;
   kind: MediaKind;
@@ -133,9 +135,42 @@ export type ContentMediaItem = {
   title: string;
   description?: string;
   author?: string;
+  creator?: string;
+  artworkUrl?: string;
+  externalIds?: Partial<Record<ExternalIdentifierType, string>>;
+  metadataCompleteness?: "complete" | "partial" | "manual";
   metadata?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+};
+
+export type MediaSearchResult = {
+  media: ContentMediaItem;
+  matchedOn: "title" | ExternalIdentifierType;
+  query: string;
+};
+
+export type MediaSearchResponse = {
+  query: string;
+  results: MediaSearchResult[];
+  cached: boolean;
+};
+
+export type ManualMediaEntryRequest = {
+  id?: string;
+  kind: MediaKind;
+  title: string;
+  creator?: string;
+  artworkUrl?: string;
+  description?: string;
+  externalIds?: Partial<Record<ExternalIdentifierType, string>>;
+};
+
+export type GroupMediaNavigationResponse = {
+  groupId: string;
+  activeMediaId?: string;
+  title?: string;
+  artworkUrl?: string;
 };
 
 export type ContentMediaUnit = {

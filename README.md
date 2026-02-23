@@ -36,3 +36,16 @@ A new shared auth module lives at `services/auth` and provides:
 - Encrypted-at-rest auth metadata storage
 - TLS-only transport checks and secure token storage enforcement
 - Account linking across providers (phone, social, email)
+
+## Content media ingestion/search service
+
+`services/content` now supports a media-ingestion/search workflow for group experiences:
+
+- Normalizes external identifiers for ingestion/search (`isbn`, `imdb`, `tmdb`, `tvdb`, `asin`)
+- Stores media title, artwork, creator metadata, and unit structure (chapters/episodes)
+- Caches repeated search queries and tracks popular queries for responsive UI surfaces
+- Exposes service APIs for:
+  - searching by title or external identifier
+  - selecting active media for a group
+  - retrieving group media title/artwork for top bar + side navigation
+- Includes manual/fallback media entry tooling via `upsertManualMediaItem` for incomplete provider metadata
