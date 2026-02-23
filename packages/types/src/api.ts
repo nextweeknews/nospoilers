@@ -13,6 +13,10 @@ export type MediaItem = {
   progress: GroupProgress;
 };
 
+export type GroupPrivacyMode = "public" | "private";
+
+export type GroupMembershipRole = "owner" | "admin" | "member";
+
 export type Group = {
   id: string;
   name: string;
@@ -20,6 +24,38 @@ export type Group = {
   coverUrl: string;
   activeMediaId: string;
   media: MediaItem[];
+  privacyMode?: GroupPrivacyMode;
+  showPostsInMainFeed?: boolean;
+};
+
+export type GroupMembership = {
+  id: string;
+  groupId: string;
+  userId: string;
+  role: GroupMembershipRole;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GroupInvite = {
+  id: string;
+  groupId: string;
+  invitedByUserId: string;
+  expiresAt: string;
+  maxUses: number;
+  useCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InviteAcceptanceResponse = {
+  status: "joined" | "auth_required";
+  groupId: string;
+  inviteId: string;
+  expiresAt: string;
+  remainingUses: number;
+  redirectTo?: string;
+  membership?: GroupMembership;
 };
 
 export type Post = {
