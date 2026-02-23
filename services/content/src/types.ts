@@ -1,5 +1,48 @@
 export type MediaKind = "book" | "show";
 
+export type GroupPrivacyMode = "public" | "private";
+export type GroupMembershipRole = "owner" | "admin" | "member";
+
+export interface Group {
+  id: string;
+  name: string;
+  privacyMode: GroupPrivacyMode;
+  showPostsInMainFeed: boolean;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupMembership {
+  id: string;
+  groupId: string;
+  userId: string;
+  role: GroupMembershipRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupInvite {
+  id: string;
+  groupId: string;
+  invitedByUserId: string;
+  expiresAt: string;
+  maxUses: number;
+  useCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InviteAcceptanceResult {
+  status: "joined" | "auth_required";
+  groupId: string;
+  inviteId: string;
+  expiresAt: string;
+  remainingUses: number;
+  redirectTo?: string;
+  membership?: GroupMembership;
+}
+
 export interface MediaItem {
   id: string;
   kind: MediaKind;
@@ -97,6 +140,15 @@ export interface FeedResponse {
   mediaItemId: string;
   progress: UserProgress;
   posts: FeedPostView[];
+}
+
+export interface MainFeedPostView extends FeedPostView {
+  groupId: string;
+  mediaItemId: string;
+}
+
+export interface MainFeedResponse {
+  posts: MainFeedPostView[];
 }
 
 export interface MarkProgressResult {
