@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Group } from "@nospoilers/types";
-import type { AuthUser, ProviderLoginResult } from "@nospoilers/auth";
+import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { BottomNav } from "./components/BottomNav";
 import { GroupScreen } from "./screens/GroupScreen";

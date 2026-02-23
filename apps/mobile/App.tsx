@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { SafeAreaView, StyleSheet, Text, View, useColorScheme } from "react-native";
 import type { Group } from "@nospoilers/types";
-import type { AuthUser, ProviderLoginResult } from "@nospoilers/auth";
+import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";

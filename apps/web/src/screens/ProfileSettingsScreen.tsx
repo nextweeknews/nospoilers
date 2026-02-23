@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import type { AuthUser } from "@nospoilers/auth";
+import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
 import { authService } from "../services/authClient";
 
