@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@nospoilers/auth": "0.1.0",
     "@nospoilers/types": "0.1.0",
     "@nospoilers/ui": "0.1.0",
     "@nospoilers/auth": "workspace:*"
