@@ -18,6 +18,9 @@
       ],
       "@nospoilers/auth": [
         "services/auth/src/index.ts"
+      ],
+      "@nospoilers/content": [
+        "services/content/src/index.ts"
       ]
     }
   }
