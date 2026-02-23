@@ -1,14 +1,16 @@
-import { BASE_BOTTOM_NAV_ITEMS, colorTokens, spacingTokens } from "@nospoilers/ui";
+import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 
 type BottomNavProps = {
   activeTab: string;
   onSelect: (key: string) => void;
+  theme: AppTheme;
 };
 
-export const BottomNav = ({ activeTab, onSelect }: BottomNavProps) => (
-  <nav style={{ display: "flex", gap: spacingTokens.sm, borderTop: `1px solid ${colorTokens.border}`, padding: spacingTokens.md }}>
+export const BottomNav = ({ activeTab, onSelect, theme }: BottomNavProps) => (
+  <nav style={{ display: "flex", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, padding: spacingTokens.md }}>
     {BASE_BOTTOM_NAV_ITEMS.map((item) => {
       const active = item.key === activeTab;
+      const tokens = componentTokens.navBar(theme, active);
       return (
         <button
           key={item.key}
@@ -17,9 +19,9 @@ export const BottomNav = ({ activeTab, onSelect }: BottomNavProps) => (
           style={{
             padding: `${spacingTokens.sm}px ${spacingTokens.md}px`,
             borderRadius: 999,
-            border: `1px solid ${active ? colorTokens.accent : colorTokens.border}`,
-            background: active ? colorTokens.accent : "transparent",
-            color: colorTokens.textPrimary
+            border: `1px solid ${tokens.borderColor}`,
+            background: tokens.background,
+            color: tokens.textColor
           }}
         >
           {item.label}

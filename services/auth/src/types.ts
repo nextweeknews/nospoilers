@@ -54,6 +54,10 @@ export interface UsernameAvailability {
   reservedUntil?: string;
 }
 
+export interface UserPreferences {
+  themePreference?: "system" | "light" | "dark";
+}
+
 export interface AuthUser {
   id: string;
   primaryPhone?: string;
@@ -64,6 +68,7 @@ export interface AuthUser {
   usernameNormalized?: string;
   displayName?: string;
   avatarUrl?: string;
+  preferences?: UserPreferences;
   createdAt: string;
   updatedAt: string;
 }

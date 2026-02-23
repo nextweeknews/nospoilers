@@ -1,18 +1,20 @@
-import { BASE_BOTTOM_NAV_ITEMS } from "@nospoilers/ui";
+import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 type BottomTabsProps = {
   activeTab: string;
   onSelect: (key: string) => void;
+  theme: AppTheme;
 };
 
-export const BottomTabs = ({ activeTab, onSelect }: BottomTabsProps) => (
-  <View style={styles.container}>
+export const BottomTabs = ({ activeTab, onSelect, theme }: BottomTabsProps) => (
+  <View style={[styles.container, { borderTopColor: theme.colors.border }]}> 
     {BASE_BOTTOM_NAV_ITEMS.map((item) => {
       const active = item.key === activeTab;
+      const tokens = componentTokens.navBar(theme, active);
       return (
-        <Pressable key={item.key} onPress={() => onSelect(item.key)} style={[styles.item, active && styles.itemActive]}>
-          <Text style={styles.label}>{item.label}</Text>
+        <Pressable key={item.key} onPress={() => onSelect(item.key)} style={[styles.item, { borderColor: tokens.borderColor, backgroundColor: tokens.background }]}>
+          <Text style={[styles.label, { color: tokens.textColor }]}>{item.label}</Text>
         </Pressable>
       );
     })}
@@ -23,25 +25,18 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 8,
+    gap: spacingTokens.sm,
     borderTopWidth: 1,
-    borderTopColor: "#334155",
-    padding: 12
+    padding: spacingTokens.md
   },
   item: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#334155",
     alignItems: "center"
   },
-  itemActive: {
-    backgroundColor: "#8b5cf6",
-    borderColor: "#8b5cf6"
-  },
   label: {
-    color: "#f9fafb",
     fontSize: 12,
     fontWeight: "600"
   }
