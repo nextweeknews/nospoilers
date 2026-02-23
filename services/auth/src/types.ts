@@ -23,12 +23,47 @@ export interface UserIdentity {
   verified: boolean;
 }
 
+export interface AvatarMeta {
+  width: number;
+  height: number;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  bytes: number;
+}
+
+export interface AvatarUploadRequest {
+  fileName: string;
+  contentType: AvatarMeta["contentType"];
+  bytes: number;
+  width: number;
+  height: number;
+}
+
+export interface AvatarUploadPlan {
+  uploadId: string;
+  uploadUrl: string;
+  objectKey: string;
+  expiresAt: string;
+  requiredHeaders: Record<string, string>;
+}
+
+export interface UsernameAvailability {
+  requested: string;
+  normalized: string;
+  available: boolean;
+  reason?: "invalid" | "taken" | "reserved";
+  reservedUntil?: string;
+}
+
 export interface AuthUser {
   id: string;
   primaryPhone?: string;
   email?: string;
   passwordHash?: string;
   identities: UserIdentity[];
+  username?: string;
+  usernameNormalized?: string;
+  displayName?: string;
+  avatarUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

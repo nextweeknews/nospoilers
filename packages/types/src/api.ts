@@ -29,3 +29,64 @@ export type Post = {
   body: string;
   createdAt: string;
 };
+
+export type UserIdentityView = {
+  provider: "phone" | "google" | "apple" | "email";
+  subject: string;
+  verified: boolean;
+};
+
+export type UserProfile = {
+  id: string;
+  phone?: string;
+  email?: string;
+  identities: UserIdentityView[];
+  username?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UsernameAvailabilityResponse = {
+  requested: string;
+  normalized: string;
+  available: boolean;
+  reason?: "invalid" | "taken" | "reserved";
+  reservedUntil?: string;
+};
+
+export type ReserveUsernameRequest = {
+  username: string;
+};
+
+export type UpdateProfileRequest = {
+  username?: string;
+  displayName?: string;
+};
+
+export type AvatarUploadRequest = {
+  fileName: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  bytes: number;
+  width: number;
+  height: number;
+};
+
+export type AvatarUploadPlanResponse = {
+  uploadId: string;
+  uploadUrl: string;
+  objectKey: string;
+  expiresAt: string;
+  requiredHeaders: Record<string, string>;
+};
+
+export type FinalizeAvatarUploadRequest = {
+  uploadId: string;
+  metadata: {
+    width: number;
+    height: number;
+    contentType: "image/jpeg" | "image/png" | "image/webp";
+    bytes: number;
+  };
+};

@@ -1,28 +1,13 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { ProviderLoginResult } from "@nospoilers/auth";
-import { AuthService, InMemoryEncryptedStorage, InMemorySecureTokenStore } from "@nospoilers/auth";
-import { mobileConfig } from "../config/env";
+import { authService } from "../services/authClient";
 
-const authService = new AuthService(
-  new InMemoryEncryptedStorage(),
-  new InMemorySecureTokenStore(),
-  "mobile-demo-encryption-key",
-  {
-    accessTokenTtlMs: 15 * 60 * 1000,
-    refreshTokenTtlMs: 14 * 24 * 60 * 60 * 1000,
-    smsCodeTtlMs: 5 * 60 * 1000,
-    passwordSalt: "nospoilers-salt",
-    transport: {
-      apiBaseUrl: mobileConfig.apiBaseUrl,
-      cookieName: "ns_refresh",
-      platform: "ios",
-      enforceSecureStorage: true
-    }
-  }
-);
+type LoginScreenProps = {
+  onSignedIn: (result: ProviderLoginResult) => void;
+};
 
-export const LoginScreen = () => {
+export const LoginScreen = ({ onSignedIn }: LoginScreenProps) => {
   const [phone, setPhone] = useState("");
   const [challengeId, setChallengeId] = useState<string>();
   const [code, setCode] = useState("");
@@ -34,6 +19,7 @@ export const LoginScreen = () => {
   const oauthProviders = useMemo(() => ["google", "apple"] as const, []);
 
   const saveResult = (result: ProviderLoginResult) => {
+    onSignedIn(result);
     setStatus(`Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`);
   };
 
