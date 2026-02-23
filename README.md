@@ -24,3 +24,15 @@ Override variables per platform:
 - `EXPO_PUBLIC_APP_ENV`
 - `EXPO_PUBLIC_API_URL`
 - `EXPO_PUBLIC_AUTH_CLIENT_ID`
+
+## Auth service module
+
+A new shared auth module lives at `services/auth` and provides:
+
+- Phone sign-in with one-time SMS verification codes
+- OAuth sign-in for Google and Apple
+- Email/password fallback support
+- Access + refresh token session strategy
+- Encrypted-at-rest auth metadata storage
+- TLS-only transport checks and secure token storage enforcement
+- Account linking across providers (phone, social, email)

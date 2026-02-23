@@ -3,6 +3,7 @@ import type { Group } from "@nospoilers/types";
 import { colorTokens, spacingTokens } from "@nospoilers/ui";
 import { BottomNav } from "./components/BottomNav";
 import { GroupScreen } from "./screens/GroupScreen";
+import { LoginScreen } from "./screens/LoginScreen";
 import { webConfig } from "./config/env";
 
 const demoGroup: Group = {
@@ -31,6 +32,7 @@ export const App = () => {
       <p style={{ color: colorTokens.textSecondary }}>
         Env: {webConfig.environment} • API: {webConfig.apiBaseUrl} • Auth Client: {webConfig.authClientId}
       </p>
+      <LoginScreen />
       <GroupScreen group={demoGroup} selectedMedia={selectedMedia} />
       <BottomNav activeTab={activeTab} onSelect={setActiveTab} />
     </div>
