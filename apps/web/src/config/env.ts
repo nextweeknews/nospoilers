@@ -6,7 +6,9 @@ import {
   type EnvironmentConfig
 } from "@nospoilers/types";
 
-const rawEnvironment = import.meta.env?.VITE_APP_ENV;
+const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
+
+const rawEnvironment = env.VITE_APP_ENV;
 
 const activeEnvironment: AppEnvironment = isAppEnvironment(rawEnvironment)
   ? rawEnvironment
@@ -16,6 +18,6 @@ const defaults = ENVIRONMENT_CONFIGS[activeEnvironment];
 
 export const webConfig: EnvironmentConfig & { environment: AppEnvironment } = {
   environment: activeEnvironment,
-  apiBaseUrl: import.meta.env?.VITE_API_URL ?? defaults.apiBaseUrl,
-  authClientId: import.meta.env?.VITE_AUTH_CLIENT_ID ?? defaults.authClientId
+  apiBaseUrl: env.VITE_API_URL ?? defaults.apiBaseUrl,
+  authClientId: env.VITE_AUTH_CLIENT_ID ?? defaults.authClientId
 };
