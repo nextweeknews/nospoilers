@@ -3,6 +3,7 @@ import { SafeAreaView, StyleSheet, Text, View } from "react-native";
 import type { Group } from "@nospoilers/types";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
+import { LoginScreen } from "./src/screens/LoginScreen";
 import { mobileConfig } from "./src/config/env";
 
 const demoGroup: Group = {
@@ -32,6 +33,7 @@ export default function App() {
         <Text style={styles.configText}>
           Env {mobileConfig.environment} · API {mobileConfig.apiBaseUrl} · Auth {mobileConfig.authClientId}
         </Text>
+        <LoginScreen />
         <GroupScreen group={demoGroup} selectedMedia={selectedMedia} />
         <BottomTabs activeTab={activeTab} onSelect={setActiveTab} />
       </View>

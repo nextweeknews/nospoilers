@@ -10,8 +10,15 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@nospoilers/ui": ["packages/ui/src/index.ts"],
-      "@nospoilers/types": ["packages/types/src/index.ts"]
+      "@nospoilers/ui": [
+        "packages/ui/src/index.ts"
+      ],
+      "@nospoilers/types": [
+        "packages/types/src/index.ts"
+      ],
+      "@nospoilers/auth": [
+        "services/auth/src/index.ts"
+      ]
     }
   }
 }
