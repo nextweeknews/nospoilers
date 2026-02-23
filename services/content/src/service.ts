@@ -13,11 +13,15 @@ import type {
   MainFeedResponse,
   MarkProgressResult,
   MediaItem,
+  MediaSearchResponse,
+  MediaSearchResult,
   MediaUnit,
   Post,
   ProgressAuditEvent,
   RollbackResult,
-  UserProgress
+  UserProgress,
+  ExternalIdentifierType,
+  GroupMediaNavigationPayload
 } from "./types";
 
 const ROLLBACK_WINDOW_MS = 2 * 60 * 1000;
@@ -37,8 +41,19 @@ interface CreateGroupInviteInput {
   maxUses?: number;
 }
 
-interface CreateMediaItemInput extends Pick<MediaItem, "kind" | "title" | "description" | "author" | "metadata"> {
+interface CreateMediaItemInput extends Pick<MediaItem, "kind" | "title" | "description" | "author" | "metadata" | "artworkUrl" | "creator" | "metadataCompleteness"> {
   id?: string;
+  externalIds?: Partial<Record<ExternalIdentifierType, string>>;
+}
+
+interface UpsertManualMediaItemInput {
+  id?: string;
+  kind: MediaItem["kind"];
+  title: string;
+  creator?: string;
+  artworkUrl?: string;
+  description?: string;
+  externalIds?: Partial<Record<ExternalIdentifierType, string>>;
 }
 
 interface CreateMediaUnitInput extends Pick<MediaUnit, "mediaItemId" | "title" | "chapterNumber" | "seasonNumber" | "episodeNumber" | "releaseOrder"> {
@@ -75,6 +90,8 @@ export class ContentService {
   private readonly groupMemberships = new Map<string, GroupMembership>();
   private readonly groupInvites = new Map<string, GroupInvite>();
   private readonly mediaItems = new Map<string, MediaItem>();
+  private readonly mediaSearchCache = new Map<string, MediaSearchResponse>();
+  private readonly mediaSearchPopularity = new Map<string, number>();
   private readonly mediaUnits = new Map<string, MediaUnit>();
   private readonly groupMediaSelections = new Map<string, GroupMediaSelection>();
   private readonly posts = new Map<string, Post>();
@@ -217,12 +234,119 @@ export class ContentService {
       title: input.title,
       description: input.description,
       author: input.author,
+      creator: input.creator ?? input.author,
+      artworkUrl: input.artworkUrl,
+      externalIds: this.normalizeExternalIdentifiers(input.externalIds),
+      metadataCompleteness: input.metadataCompleteness ?? "complete",
       metadata: input.metadata,
       createdAt: now,
       updatedAt: now
     };
     this.mediaItems.set(item.id, item);
+    this.clearSearchCache();
     return item;
+  }
+
+  upsertManualMediaItem(input: UpsertManualMediaItemInput): MediaItem {
+    if (input.id) {
+      const existing = this.mediaItems.get(input.id);
+      if (!existing) {
+        throw new Error("Manual media item could not be found.");
+      }
+
+      existing.kind = input.kind;
+      existing.title = input.title.trim();
+      existing.creator = input.creator?.trim();
+      existing.author = existing.creator;
+      existing.artworkUrl = input.artworkUrl?.trim();
+      existing.description = input.description?.trim();
+      existing.externalIds = this.normalizeExternalIdentifiers(input.externalIds ?? existing.externalIds);
+      existing.metadataCompleteness = "manual";
+      existing.updatedAt = new Date().toISOString();
+      this.mediaItems.set(existing.id, existing);
+      this.clearSearchCache();
+      return existing;
+    }
+
+    return this.createMediaItem({
+      kind: input.kind,
+      title: input.title.trim(),
+      author: input.creator?.trim(),
+      creator: input.creator?.trim(),
+      artworkUrl: input.artworkUrl?.trim(),
+      description: input.description?.trim(),
+      externalIds: input.externalIds,
+      metadataCompleteness: "manual"
+    });
+  }
+
+  searchMedia(query: string): MediaSearchResponse {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return { query, results: [], cached: false };
+    }
+
+    const cached = this.mediaSearchCache.get(normalizedQuery);
+    if (cached) {
+      this.bumpSearchPopularity(normalizedQuery);
+      return { ...cached, cached: true };
+    }
+
+    const parsedIdentifier = this.parseIdentifierQuery(normalizedQuery);
+    const results: MediaSearchResult[] = [];
+
+    for (const media of this.mediaItems.values()) {
+      if (parsedIdentifier) {
+        const candidate = media.externalIds?.[parsedIdentifier.type];
+        if (candidate && candidate === parsedIdentifier.value) {
+          results.push({ media, matchedOn: parsedIdentifier.type, query });
+        }
+        continue;
+      }
+
+      const titleMatch = media.title.toLowerCase().includes(normalizedQuery);
+      if (titleMatch) {
+        results.push({ media, matchedOn: "title", query });
+      }
+    }
+
+    const response: MediaSearchResponse = {
+      query,
+      results: results.sort((a, b) => a.media.title.localeCompare(b.media.title)),
+      cached: false
+    };
+
+    this.mediaSearchCache.set(normalizedQuery, response);
+    this.bumpSearchPopularity(normalizedQuery);
+    this.trimSearchCache();
+    return response;
+  }
+
+  getPopularMediaQueries(limit = 10): Array<{ query: string; count: number }> {
+    return Array.from(this.mediaSearchPopularity.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([queryKey, count]) => ({ query: queryKey, count }));
+  }
+
+  getGroupMediaNavigation(groupId: string): GroupMediaNavigationPayload {
+    this.requireGroup(groupId);
+
+    const activeSelection = Array.from(this.groupMediaSelections.values()).find(
+      (selection) => selection.groupId === groupId && selection.isActive
+    );
+
+    if (!activeSelection) {
+      return { groupId };
+    }
+
+    const media = this.mediaItems.get(activeSelection.mediaItemId);
+    return {
+      groupId,
+      activeMediaId: activeSelection.mediaItemId,
+      title: media?.title,
+      artworkUrl: media?.artworkUrl
+    };
   }
 
   createMediaUnit(input: CreateMediaUnitInput): MediaUnit {
@@ -513,6 +637,73 @@ export class ContentService {
       .filter((post) => post.groupId === groupId && post.mediaItemId === mediaItemId)
       .filter((post) => this.requireUnit(post.requiredUnitId, mediaItemId).releaseOrder > highestUnitOrder)
       .map((post) => post.id);
+  }
+
+  private normalizeExternalIdentifiers(
+    externalIds?: Partial<Record<ExternalIdentifierType, string>>
+  ): Partial<Record<ExternalIdentifierType, string>> | undefined {
+    if (!externalIds) {
+      return undefined;
+    }
+
+    const normalized: Partial<Record<ExternalIdentifierType, string>> = {};
+    for (const [rawType, rawValue] of Object.entries(externalIds)) {
+      const type = rawType as ExternalIdentifierType;
+      const value = rawValue?.trim();
+      if (!value) {
+        continue;
+      }
+
+      if (type === "isbn") {
+        const isbn = value.replace(/[^0-9X]/gi, "").toUpperCase();
+        if (isbn) normalized.isbn = isbn;
+        continue;
+      }
+
+      if (type === "imdb") {
+        const match = value.toLowerCase().match(/tt\d+/);
+        if (match) normalized.imdb = match[0];
+        continue;
+      }
+
+      normalized[type] = value.toLowerCase();
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  private parseIdentifierQuery(query: string): { type: ExternalIdentifierType; value: string } | undefined {
+    const isbn = query.replace(/[^0-9X]/gi, "").toUpperCase();
+    if (isbn.length === 10 || isbn.length === 13) {
+      return { type: "isbn", value: isbn };
+    }
+
+    const imdbMatch = query.match(/tt\d+/i);
+    if (imdbMatch) {
+      return { type: "imdb", value: imdbMatch[0].toLowerCase() };
+    }
+
+    return undefined;
+  }
+
+  private bumpSearchPopularity(query: string): void {
+    const current = this.mediaSearchPopularity.get(query) ?? 0;
+    this.mediaSearchPopularity.set(query, current + 1);
+  }
+
+  private clearSearchCache(): void {
+    this.mediaSearchCache.clear();
+  }
+
+  private trimSearchCache(maxEntries = 100): void {
+    if (this.mediaSearchCache.size <= maxEntries) {
+      return;
+    }
+
+    const staleKeys = Array.from(this.mediaSearchCache.keys()).slice(0, this.mediaSearchCache.size - maxEntries);
+    for (const key of staleKeys) {
+      this.mediaSearchCache.delete(key);
+    }
   }
 
   private requireUnit(unitId: string, expectedMediaItemId: string): MediaUnit {
