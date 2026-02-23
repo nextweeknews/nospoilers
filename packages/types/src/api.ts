@@ -69,7 +69,7 @@ export type Post = {
 };
 
 export type UserIdentityView = {
-  provider: "phone" | "google" | "apple" | "email";
+  provider: "phone" | "google" | "email";
   subject: string;
   verified: boolean;
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -37,7 +37,7 @@ const mapResult = (user: User, session: Session): ProviderLoginResult => ({
     email: user.email,
     primaryPhone: user.phone,
     identities: (user.identities ?? []).map((identity) => ({
-      provider: identity.provider === "sms" ? "phone" : (identity.provider as "google" | "apple" | "email"),
+      provider: identity.provider === "sms" ? "phone" : (identity.provider as "google" | "email"),
       subject: identity.identity_id,
       verified: Boolean(identity.last_sign_in_at)
     })),
@@ -61,7 +61,6 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Not signed in");
 
-  const oauthProviders = useMemo(() => ["google"] as const, []);
 
   const saveResult = (result: ProviderLoginResult) => {
     onSignedIn(result);
@@ -153,17 +152,14 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         </>
       ) : null}
 
-      {oauthProviders.map((provider) => (
-        <Pressable
-          key={provider}
-          style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
-          onPress={async () => {
-            await handleOAuth(provider);
-          }}
-        >
-          <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</Text>
-        </Pressable>
-      ))}
+      <Pressable
+        style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
+        onPress={async () => {
+          await handleOAuth("google");
+        }}
+      >
+        <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</Text>
+      </Pressable>
 
       <View style={[styles.fallbackSection, { borderTopColor: theme.colors.border }]}> 
         <Text style={[styles.fallbackLabel, { color: theme.colors.textSecondary }]}>Fallback: email/password</Text>

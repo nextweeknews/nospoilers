@@ -25,7 +25,7 @@ const mapResult = (user: User, session: Session): ProviderLoginResult => ({
     email: user.email,
     primaryPhone: user.phone,
     identities: (user.identities ?? []).map((identity) => ({
-      provider: identity.provider === "sms" ? "phone" : (identity.provider as "google" | "apple" | "email"),
+      provider: identity.provider === "sms" ? "phone" : (identity.provider as "google" | "email"),
       subject: identity.identity_id,
       verified: Boolean(identity.last_sign_in_at)
     })),
