@@ -1,15 +1,18 @@
-import { AuthService, InMemoryEncryptedStorage, InMemorySecureTokenStore } from "@nospoilers/auth";
 import { webConfig } from "../config/env";
+import { supabaseClient } from "./supabaseClient";
 
-export const authService = new AuthService(new InMemoryEncryptedStorage(), new InMemorySecureTokenStore(), "web-demo-encryption-key", {
-  accessTokenTtlMs: 15 * 60 * 1000,
-  refreshTokenTtlMs: 14 * 24 * 60 * 60 * 1000,
-  smsCodeTtlMs: 5 * 60 * 1000,
-  passwordSalt: "nospoilers-salt",
-  transport: {
-    apiBaseUrl: webConfig.apiBaseUrl,
-    cookieName: "ns_refresh",
-    platform: "web",
-    enforceSecureStorage: true
-  }
-});
+export const authClient = supabaseClient.auth;
+export const authRedirectTo = webConfig.supabaseAuthRedirectUrl;
+
+export const signInWithGoogle = async () =>
+  authClient.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: authRedirectTo
+    }
+  });
+
+export const signOut = async () => authClient.signOut();
+
+// Backward-compatible alias while migration is in progress.
+export const authService: any = supabaseClient;
