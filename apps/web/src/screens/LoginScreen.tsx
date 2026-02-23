@@ -1,5 +1,5 @@
 import { FormEvent, type CSSProperties, useMemo, useState } from "react";
-import type { ProviderLoginResult } from "@nospoilers/auth";
+import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { componentTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
 import { authService } from "../services/authClient";
 

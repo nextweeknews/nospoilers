@@ -1,4 +1,4 @@
-import { AuthService, InMemoryEncryptedStorage, InMemorySecureTokenStore } from "@nospoilers/auth";
+import { AuthService, InMemoryEncryptedStorage, InMemorySecureTokenStore } from "../../../../services/auth/src";
 import { mobileConfig } from "../config/env";
 
 export const authService = new AuthService(
