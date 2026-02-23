@@ -1,6 +1,19 @@
 import { randomToken, sha256 } from "./crypto";
 import { getEncryptedJson, setEncryptedJson } from "./storage";
-import type { AuthPolicy, AuthProvider, AuthUser, EncryptedStorage, PhoneChallenge, ProviderLoginResult, SecureTokenStore, SessionPair } from "./types";
+import type {
+  AuthPolicy,
+  AuthProvider,
+  AuthUser,
+  AvatarMeta,
+  AvatarUploadPlan,
+  AvatarUploadRequest,
+  EncryptedStorage,
+  PhoneChallenge,
+  ProviderLoginResult,
+  SecureTokenStore,
+  SessionPair,
+  UsernameAvailability
+} from "./types";
 
 interface PhoneChallengeRecord {
   challengeId: string;
@@ -15,9 +28,30 @@ interface RefreshTokenRecord {
   expiresAtMs: number;
 }
 
+interface UsernameReservationRecord {
+  normalized: string;
+  userId: string;
+  expiresAtMs: number;
+}
+
+interface AvatarUploadRecord {
+  uploadId: string;
+  objectKey: string;
+  userId: string;
+  expiresAtMs: number;
+  request: AvatarUploadRequest;
+}
+
 const USERS_KEY = "auth:users";
 const PHONE_CHALLENGES_KEY = "auth:phone:challenges";
 const REFRESH_TOKENS_KEY = "auth:refreshTokens";
+const USERNAME_INDEX_KEY = "auth:username:index";
+const USERNAME_RESERVATIONS_KEY = "auth:username:reservations";
+const AVATAR_UPLOADS_KEY = "auth:avatar:uploads";
+
+const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9_]{1,28}[a-z0-9])?$/;
+const USERNAME_RESERVATION_TTL_MS = 5 * 60 * 1000;
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 export class AuthService {
   constructor(
@@ -94,18 +128,182 @@ export class AuthService {
       return this.createSession(existing, false);
     }
 
+    const now = new Date().toISOString();
     const user: AuthUser = {
       id: `user_${randomToken(10)}`,
       email: normalizedEmail,
       passwordHash,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      displayName: normalizedEmail.split("@")[0],
+      createdAt: now,
+      updatedAt: now,
       identities: [{ provider: "email", subject: normalizedEmail, verified: true }]
     };
 
     users[user.id] = user;
     await this.saveUsers(users);
     return this.createSession(user, true);
+  }
+
+  async getProfile(userId: string): Promise<AuthUser> {
+    const user = await this.requireUser(userId);
+    return { ...user };
+  }
+
+  async updateProfile(userId: string, updates: { displayName?: string; username?: string }): Promise<AuthUser> {
+    const users = await this.getUsers();
+    const usernameIndex = await this.getUsernameIndex();
+    const reservations = await this.getUsernameReservations();
+
+    const user = users[userId];
+    if (!user) {
+      throw new Error("Unknown user.");
+    }
+
+    if (typeof updates.username === "string") {
+      const normalizedUsername = this.normalizeUsername(updates.username);
+      if (!normalizedUsername || !USERNAME_PATTERN.test(normalizedUsername)) {
+        throw new Error("Invalid username format.");
+      }
+
+      const reservation = reservations[normalizedUsername];
+      if (reservation && reservation.userId !== userId && reservation.expiresAtMs > Date.now()) {
+        throw new Error("Username is currently reserved.");
+      }
+
+      const existingOwner = usernameIndex[normalizedUsername];
+      if (existingOwner && existingOwner !== userId) {
+        throw new Error("Username already taken.");
+      }
+
+      if (user.usernameNormalized && user.usernameNormalized !== normalizedUsername) {
+        delete usernameIndex[user.usernameNormalized];
+      }
+
+      user.username = updates.username.trim();
+      user.usernameNormalized = normalizedUsername;
+      usernameIndex[normalizedUsername] = userId;
+      delete reservations[normalizedUsername];
+    }
+
+    if (typeof updates.displayName === "string") {
+      user.displayName = updates.displayName.trim();
+    }
+
+    user.updatedAt = new Date().toISOString();
+    users[user.id] = user;
+
+    await this.saveUsers(users);
+    await this.saveUsernameIndex(usernameIndex);
+    await this.saveUsernameReservations(reservations);
+    return { ...user };
+  }
+
+  async checkUsernameAvailability(username: string): Promise<UsernameAvailability> {
+    const normalized = this.normalizeUsername(username);
+    if (!normalized || !USERNAME_PATTERN.test(normalized)) {
+      return { requested: username, normalized: normalized ?? "", available: false, reason: "invalid" };
+    }
+
+    const usernameIndex = await this.getUsernameIndex();
+    if (usernameIndex[normalized]) {
+      return { requested: username, normalized, available: false, reason: "taken" };
+    }
+
+    const reservations = await this.getUsernameReservations();
+    const reservation = reservations[normalized];
+    if (reservation && reservation.expiresAtMs > Date.now()) {
+      return {
+        requested: username,
+        normalized,
+        available: false,
+        reason: "reserved",
+        reservedUntil: new Date(reservation.expiresAtMs).toISOString()
+      };
+    }
+
+    return { requested: username, normalized, available: true };
+  }
+
+  async reserveUsername(username: string, userId: string): Promise<UsernameAvailability> {
+    const availability = await this.checkUsernameAvailability(username);
+    if (!availability.available) {
+      return availability;
+    }
+
+    const reservations = await this.getUsernameReservations();
+    const expiresAtMs = Date.now() + USERNAME_RESERVATION_TTL_MS;
+    reservations[availability.normalized] = {
+      normalized: availability.normalized,
+      userId,
+      expiresAtMs
+    };
+    await this.saveUsernameReservations(reservations);
+
+    return {
+      ...availability,
+      available: false,
+      reason: "reserved",
+      reservedUntil: new Date(expiresAtMs).toISOString()
+    };
+  }
+
+  async createAvatarUploadPlan(userId: string, request: AvatarUploadRequest): Promise<AvatarUploadPlan> {
+    await this.requireUser(userId);
+    this.validateAvatarMeta(request);
+
+    const uploadId = `upl_${randomToken(16)}`;
+    const objectKey = `avatars/${userId}/${uploadId}-${request.fileName.replace(/\s+/g, "-").toLowerCase()}`;
+    const expiresAtMs = Date.now() + 10 * 60 * 1000;
+
+    const uploads = await this.getAvatarUploads();
+    uploads[uploadId] = {
+      uploadId,
+      objectKey,
+      userId,
+      expiresAtMs,
+      request
+    };
+    await this.saveAvatarUploads(uploads);
+
+    return {
+      uploadId,
+      objectKey,
+      uploadUrl: `${this.policy.transport.apiBaseUrl}/uploads/${uploadId}/signed-put`,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      requiredHeaders: {
+        "content-type": request.contentType,
+        "x-nospoilers-upload-token": uploadId
+      }
+    };
+  }
+
+  async finalizeAvatarUpload(userId: string, uploadId: string, metadata: AvatarMeta): Promise<AuthUser> {
+    const users = await this.getUsers();
+    const uploads = await this.getAvatarUploads();
+    const upload = uploads[uploadId];
+    if (!upload || upload.userId !== userId || upload.expiresAtMs < Date.now()) {
+      throw new Error("Avatar upload has expired or is invalid.");
+    }
+
+    this.validateAvatarMeta(metadata);
+    if (metadata.contentType !== upload.request.contentType) {
+      throw new Error("Avatar MIME type mismatch.");
+    }
+
+    const user = users[userId];
+    if (!user) {
+      throw new Error("Unknown user.");
+    }
+
+    user.avatarUrl = `${this.policy.transport.apiBaseUrl}/cdn/${upload.objectKey}`;
+    user.updatedAt = new Date().toISOString();
+
+    delete uploads[uploadId];
+    users[userId] = user;
+    await this.saveAvatarUploads(uploads);
+    await this.saveUsers(users);
+
+    return { ...user };
   }
 
   async refreshSession(refreshToken?: string): Promise<SessionPair> {
@@ -164,12 +362,14 @@ export class AuthService {
 
     let linked = false;
     if (!user) {
+      const now = new Date().toISOString();
       user = {
         id: `user_${randomToken(10)}`,
         email: options.email,
         primaryPhone: options.primaryPhone,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        displayName: options.email?.split("@")[0],
+        createdAt: now,
+        updatedAt: now,
         identities: []
       };
       linked = true;
@@ -234,6 +434,32 @@ export class AuthService {
     }
   }
 
+  private validateAvatarMeta(meta: AvatarMeta): void {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(meta.contentType)) {
+      throw new Error("Unsupported avatar content type.");
+    }
+    if (meta.width < 128 || meta.height < 128) {
+      throw new Error("Avatar image must be at least 128x128.");
+    }
+    if (meta.bytes <= 0 || meta.bytes > MAX_AVATAR_BYTES) {
+      throw new Error("Avatar image size is invalid.");
+    }
+  }
+
+  private normalizeUsername(input: string): string | undefined {
+    const trimmed = input.trim().toLowerCase();
+    return trimmed.length ? trimmed : undefined;
+  }
+
+  private async requireUser(userId: string): Promise<AuthUser> {
+    const users = await this.getUsers();
+    const user = users[userId];
+    if (!user) {
+      throw new Error("Unknown user.");
+    }
+    return user;
+  }
+
   private async getUsers(): Promise<Record<string, AuthUser>> {
     return (await getEncryptedJson<Record<string, AuthUser>>(this.storage, USERS_KEY, this.encryptionSecret)) ?? {};
   }
@@ -256,5 +482,38 @@ export class AuthService {
 
   private async saveRefreshTokens(refreshTokens: Record<string, RefreshTokenRecord>): Promise<void> {
     await setEncryptedJson(this.storage, REFRESH_TOKENS_KEY, refreshTokens, this.encryptionSecret);
+  }
+
+  private async getUsernameIndex(): Promise<Record<string, string>> {
+    return (await getEncryptedJson<Record<string, string>>(this.storage, USERNAME_INDEX_KEY, this.encryptionSecret)) ?? {};
+  }
+
+  private async saveUsernameIndex(index: Record<string, string>): Promise<void> {
+    await setEncryptedJson(this.storage, USERNAME_INDEX_KEY, index, this.encryptionSecret);
+  }
+
+  private async getUsernameReservations(): Promise<Record<string, UsernameReservationRecord>> {
+    const all =
+      (await getEncryptedJson<Record<string, UsernameReservationRecord>>(this.storage, USERNAME_RESERVATIONS_KEY, this.encryptionSecret)) ??
+      {};
+    const now = Date.now();
+    for (const [key, value] of Object.entries(all)) {
+      if (value.expiresAtMs < now) {
+        delete all[key];
+      }
+    }
+    return all;
+  }
+
+  private async saveUsernameReservations(reservations: Record<string, UsernameReservationRecord>): Promise<void> {
+    await setEncryptedJson(this.storage, USERNAME_RESERVATIONS_KEY, reservations, this.encryptionSecret);
+  }
+
+  private async getAvatarUploads(): Promise<Record<string, AvatarUploadRecord>> {
+    return (await getEncryptedJson<Record<string, AvatarUploadRecord>>(this.storage, AVATAR_UPLOADS_KEY, this.encryptionSecret)) ?? {};
+  }
+
+  private async saveAvatarUploads(uploads: Record<string, AvatarUploadRecord>): Promise<void> {
+    await setEncryptedJson(this.storage, AVATAR_UPLOADS_KEY, uploads, this.encryptionSecret);
   }
 }

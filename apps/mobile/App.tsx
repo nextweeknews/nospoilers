@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { SafeAreaView, StyleSheet, Text, View } from "react-native";
 import type { Group } from "@nospoilers/types";
+import type { AuthUser, ProviderLoginResult } from "@nospoilers/auth";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
+import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
 import { mobileConfig } from "./src/config/env";
 
 const demoGroup: Group = {
@@ -25,7 +27,12 @@ const demoGroup: Group = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("groups");
+  const [currentUser, setCurrentUser] = useState<AuthUser>();
   const selectedMedia = demoGroup.media[0];
+
+  const onSignedIn = (result: ProviderLoginResult) => {
+    setCurrentUser(result.user);
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -33,8 +40,12 @@ export default function App() {
         <Text style={styles.configText}>
           Env {mobileConfig.environment} · API {mobileConfig.apiBaseUrl} · Auth {mobileConfig.authClientId}
         </Text>
-        <LoginScreen />
-        <GroupScreen group={demoGroup} selectedMedia={selectedMedia} />
+        <LoginScreen onSignedIn={onSignedIn} />
+        {activeTab === "account" ? (
+          <ProfileSettingsScreen userId={currentUser?.id} onProfileUpdated={setCurrentUser} />
+        ) : (
+          <GroupScreen group={demoGroup} selectedMedia={selectedMedia} />
+        )}
         <BottomTabs activeTab={activeTab} onSelect={setActiveTab} />
       </View>
     </SafeAreaView>

@@ -1,27 +1,12 @@
 import { FormEvent, type CSSProperties, useMemo, useState } from "react";
 import type { ProviderLoginResult } from "@nospoilers/auth";
-import { AuthService, InMemoryEncryptedStorage, InMemorySecureTokenStore } from "@nospoilers/auth";
-import { webConfig } from "../config/env";
+import { authService } from "../services/authClient";
 
-const authService = new AuthService(
-  new InMemoryEncryptedStorage(),
-  new InMemorySecureTokenStore(),
-  "web-demo-encryption-key",
-  {
-    accessTokenTtlMs: 15 * 60 * 1000,
-    refreshTokenTtlMs: 14 * 24 * 60 * 60 * 1000,
-    smsCodeTtlMs: 5 * 60 * 1000,
-    passwordSalt: "nospoilers-salt",
-    transport: {
-      apiBaseUrl: webConfig.apiBaseUrl,
-      cookieName: "ns_refresh",
-      platform: "web",
-      enforceSecureStorage: true
-    }
-  }
-);
+type LoginScreenProps = {
+  onSignedIn: (result: ProviderLoginResult) => void;
+};
 
-export const LoginScreen = () => {
+export const LoginScreen = ({ onSignedIn }: LoginScreenProps) => {
   const [phone, setPhone] = useState("");
   const [challengeId, setChallengeId] = useState<string>();
   const [smsCode, setSmsCode] = useState("");
@@ -31,6 +16,7 @@ export const LoginScreen = () => {
   const [sessionSummary, setSessionSummary] = useState<string>("Not signed in");
 
   const saveResult = (result: ProviderLoginResult) => {
+    onSignedIn(result);
     setSessionSummary(
       `Signed in as ${result.user.id} via ${result.user.identities.map((identity) => identity.provider).join(", ")} · token ${result.session.accessToken.slice(0, 14)}...`
     );
