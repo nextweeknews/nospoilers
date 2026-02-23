@@ -1,4 +1,4 @@
-export type AuthProvider = "phone" | "google" | "apple" | "email";
+export type AuthProvider = "phone" | "google" | "email";
 
 export type Platform = "web" | "ios" | "android";
 

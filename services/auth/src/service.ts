@@ -158,7 +158,7 @@ export class AuthService {
     return result;
   }
 
-  async loginWithOAuth(provider: "google" | "apple", oauthSubject: string, emailHint?: string): Promise<ProviderLoginResult> {
+  async loginWithOAuth(provider: "google", oauthSubject: string, emailHint?: string): Promise<ProviderLoginResult> {
     const normalizedEmail = this.normalizeEmail(emailHint);
     const subject = this.normalizeSubject(oauthSubject);
     this.assertRateLimit(`oauth_login:${provider}:${subject}`, LOGIN_LIMIT, "Too many login attempts.");
