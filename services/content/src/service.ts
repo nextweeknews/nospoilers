@@ -25,6 +25,24 @@ import type {
 } from "./types";
 
 const ROLLBACK_WINDOW_MS = 2 * 60 * 1000;
+const INVITE_WINDOW_MS = 10 * 60 * 1000;
+const INVITE_MAX_PER_WINDOW = 5;
+
+export interface ContentAuditEvent {
+  id: string;
+  eventType: "invite_acceptance" | "privacy_change" | "progress_rollback";
+  actorUserId?: string;
+  groupId?: string;
+  targetId?: string;
+  status: "success" | "failure";
+  metadata?: Record<string, string | number | boolean>;
+  createdAt: string;
+}
+
+interface InviteThrottleState {
+  count: number;
+  windowStartedAtMs: number;
+}
 
 interface CreateGroupInput {
   name: string;
@@ -97,6 +115,9 @@ export class ContentService {
   private readonly posts = new Map<string, Post>();
   private readonly userProgress = new Map<string, UserProgress>();
   private readonly progressAuditTrail = new Map<string, ProgressAuditEvent>();
+  private readonly inviteThrottle = new Map<string, InviteThrottleState>();
+  private readonly suspiciousActivity = new Map<string, { score: number; reason: string; lastObservedAt: string }>();
+  private readonly auditEvents: ContentAuditEvent[] = [];
 
   constructor(private readonly inviteSigningSecret: string = "nospoilers-dev-content-secret") {}
 
@@ -121,9 +142,17 @@ export class ContentService {
     const group = this.requireGroup(groupId);
     this.assertHasGroupRole(actingUserId, groupId, ["owner", "admin"]);
 
+    const previous = group.showPostsInMainFeed;
     group.showPostsInMainFeed = showPostsInMainFeed;
     group.updatedAt = new Date().toISOString();
     this.groups.set(group.id, group);
+    this.logAudit({
+      eventType: "privacy_change",
+      actorUserId: actingUserId,
+      groupId,
+      status: "success",
+      metadata: { previousShowPostsInMainFeed: previous, nextShowPostsInMainFeed: showPostsInMainFeed }
+    });
     return group;
   }
 
@@ -136,6 +165,7 @@ export class ContentService {
   createInviteLink(input: CreateGroupInviteInput): { invite: GroupInvite; inviteToken: string } {
     this.requireGroup(input.groupId);
     this.assertHasGroupRole(input.invitedByUserId, input.groupId, ["owner", "admin"]);
+    this.assertInviteThrottle(input.invitedByUserId);
 
     if (!Number.isFinite(input.expiresInMs) || input.expiresInMs <= 0) {
       throw new Error("Invite expiration must be a positive duration.");
@@ -174,21 +204,61 @@ export class ContentService {
   }
 
   acceptInvite(input: AcceptInviteInput): InviteAcceptanceResult {
-    const payload = this.verifyInviteToken(input.inviteToken);
+    let payload: { inviteId: string; groupId: string; exp: number; nonce: string };
+    try {
+      payload = this.verifyInviteToken(input.inviteToken);
+    } catch (error) {
+      this.recordSuspicious("invite_token_invalid", "invite_token_invalid");
+      this.logAudit({ eventType: "invite_acceptance", status: "failure", metadata: { reason: "invalid_token" } });
+      throw error;
+    }
     const invite = this.groupInvites.get(payload.inviteId);
     if (!invite || invite.groupId !== payload.groupId) {
+      this.recordSuspicious(`invite_missing:${payload.inviteId}`, "invite_missing");
+      this.logAudit({
+        eventType: "invite_acceptance",
+        actorUserId: input.userId,
+        groupId: payload.groupId,
+        targetId: payload.inviteId,
+        status: "failure",
+        metadata: { reason: "invalid_invite" }
+      });
       throw new Error("Invite is invalid.");
     }
 
     if (Date.now() > payload.exp || Date.now() > new Date(invite.expiresAt).getTime()) {
+      this.logAudit({
+        eventType: "invite_acceptance",
+        actorUserId: input.userId,
+        groupId: invite.groupId,
+        targetId: invite.id,
+        status: "failure",
+        metadata: { reason: "expired" }
+      });
       throw new Error("Invite has expired.");
     }
 
     if (invite.useCount >= invite.maxUses) {
+      this.recordSuspicious(`invite_overuse:${invite.id}`, "invite_overuse");
+      this.logAudit({
+        eventType: "invite_acceptance",
+        actorUserId: input.userId,
+        groupId: invite.groupId,
+        targetId: invite.id,
+        status: "failure",
+        metadata: { reason: "max_uses" }
+      });
       throw new Error("Invite has reached its maximum number of uses.");
     }
 
     if (!input.userId) {
+      this.logAudit({
+        eventType: "invite_acceptance",
+        groupId: invite.groupId,
+        targetId: invite.id,
+        status: "failure",
+        metadata: { reason: "auth_required" }
+      });
       return {
         status: "auth_required",
         groupId: invite.groupId,
@@ -201,6 +271,14 @@ export class ContentService {
 
     const existing = this.getMembership(input.userId, invite.groupId);
     if (existing) {
+      this.logAudit({
+        eventType: "invite_acceptance",
+        actorUserId: input.userId,
+        groupId: invite.groupId,
+        targetId: invite.id,
+        status: "success",
+        metadata: { alreadyMember: true }
+      });
       return {
         status: "joined",
         groupId: invite.groupId,
@@ -216,6 +294,14 @@ export class ContentService {
     this.groupInvites.set(invite.id, invite);
 
     const membership = this.upsertMembership(invite.groupId, input.userId, "member");
+    this.logAudit({
+      eventType: "invite_acceptance",
+      actorUserId: input.userId,
+      groupId: invite.groupId,
+      targetId: invite.id,
+      status: "success",
+      metadata: { alreadyMember: false }
+    });
     return {
       status: "joined",
       groupId: invite.groupId,
@@ -227,14 +313,15 @@ export class ContentService {
   }
 
   createMediaItem(input: CreateMediaItemInput): MediaItem {
+    this.validateRequiredText("Media title", input.title, 160);
     const now = new Date().toISOString();
     const item: MediaItem = {
       id: input.id ?? `media_${this.generateId()}`,
       kind: input.kind,
-      title: input.title,
-      description: input.description,
-      author: input.author,
-      creator: input.creator ?? input.author,
+      title: this.sanitizeAndEncode(input.title, 160),
+      description: this.sanitizeOptionalText(input.description, 4000),
+      author: this.sanitizeOptionalText(input.author, 120),
+      creator: this.sanitizeOptionalText(input.creator ?? input.author, 120),
       artworkUrl: input.artworkUrl,
       externalIds: this.normalizeExternalIdentifiers(input.externalIds),
       metadataCompleteness: input.metadataCompleteness ?? "complete",
@@ -255,11 +342,12 @@ export class ContentService {
       }
 
       existing.kind = input.kind;
-      existing.title = input.title.trim();
-      existing.creator = input.creator?.trim();
+      this.validateRequiredText("Media title", input.title, 160);
+      existing.title = this.sanitizeAndEncode(input.title, 160);
+      existing.creator = this.sanitizeOptionalText(input.creator, 120);
       existing.author = existing.creator;
       existing.artworkUrl = input.artworkUrl?.trim();
-      existing.description = input.description?.trim();
+      existing.description = this.sanitizeOptionalText(input.description, 4000);
       existing.externalIds = this.normalizeExternalIdentifiers(input.externalIds ?? existing.externalIds);
       existing.metadataCompleteness = "manual";
       existing.updatedAt = new Date().toISOString();
@@ -270,11 +358,11 @@ export class ContentService {
 
     return this.createMediaItem({
       kind: input.kind,
-      title: input.title.trim(),
-      author: input.creator?.trim(),
-      creator: input.creator?.trim(),
+      title: this.sanitizeAndEncode(input.title, 160),
+      author: this.sanitizeOptionalText(input.creator, 120),
+      creator: this.sanitizeOptionalText(input.creator, 120),
       artworkUrl: input.artworkUrl?.trim(),
-      description: input.description?.trim(),
+      description: this.sanitizeOptionalText(input.description, 4000),
       externalIds: input.externalIds,
       metadataCompleteness: "manual"
     });
@@ -354,11 +442,12 @@ export class ContentService {
       throw new Error("Unknown media item.");
     }
 
+    this.validateRequiredText("Unit title", input.title, 160);
     const now = new Date().toISOString();
     const unit: MediaUnit = {
       id: input.id ?? `unit_${this.generateId()}`,
       mediaItemId: input.mediaItemId,
-      title: input.title,
+      title: this.sanitizeAndEncode(input.title, 160),
       chapterNumber: input.chapterNumber,
       seasonNumber: input.seasonNumber,
       episodeNumber: input.episodeNumber,
@@ -416,14 +505,16 @@ export class ContentService {
       throw new Error("Group media selection does not exist.");
     }
 
+    this.validateRequiredText("Post preview", input.previewText, 280);
+    this.validateRequiredText("Post body", input.body, 8000);
     const now = new Date().toISOString();
     const post: Post = {
       id: input.id ?? `post_${this.generateId()}`,
       groupId: input.groupId,
       mediaItemId: input.mediaItemId,
       authorId: input.authorId,
-      previewText: input.previewText,
-      body: input.body,
+      previewText: this.sanitizeAndEncode(input.previewText, 280),
+      body: this.sanitizeAndEncode(input.body, 8000),
       requiredUnitId: input.requiredUnitId,
       createdAt: now,
       updatedAt: now
@@ -534,21 +625,46 @@ export class ContentService {
     );
 
     if (!forwardAudit) {
+      this.logAudit({ eventType: "progress_rollback", actorUserId: input.userId, status: "failure", metadata: { reason: "invalid_token" } });
       throw new Error("Rollback token is invalid.");
     }
 
     if (forwardAudit.rolledBackByAuditId) {
+      this.logAudit({
+        eventType: "progress_rollback",
+        actorUserId: input.userId,
+        groupId: forwardAudit.groupId,
+        targetId: forwardAudit.id,
+        status: "failure",
+        metadata: { reason: "already_used" }
+      });
       throw new Error("Rollback token has already been used.");
     }
 
     const rollbackDeadline = new Date(forwardAudit.createdAt).getTime() + ROLLBACK_WINDOW_MS;
     if (Date.now() > rollbackDeadline) {
+      this.logAudit({
+        eventType: "progress_rollback",
+        actorUserId: input.userId,
+        groupId: forwardAudit.groupId,
+        targetId: forwardAudit.id,
+        status: "failure",
+        metadata: { reason: "expired" }
+      });
       throw new Error("Rollback window has expired.");
     }
 
     const key = this.progressKey(forwardAudit.userId, forwardAudit.groupId, forwardAudit.mediaItemId);
     const progress = this.userProgress.get(key);
     if (!progress || progress.version !== forwardAudit.nextVersion) {
+      this.logAudit({
+        eventType: "progress_rollback",
+        actorUserId: input.userId,
+        groupId: forwardAudit.groupId,
+        targetId: forwardAudit.id,
+        status: "failure",
+        metadata: { reason: "version_mismatch" }
+      });
       throw new Error("Progress changed after this update; rollback denied for correctness.");
     }
 
@@ -578,6 +694,13 @@ export class ContentService {
     forwardAudit.rolledBackByAuditId = rollbackAudit.id;
     this.progressAuditTrail.set(forwardAudit.id, forwardAudit);
     this.progressAuditTrail.set(rollbackAudit.id, rollbackAudit);
+    this.logAudit({
+      eventType: "progress_rollback",
+      actorUserId: input.userId,
+      groupId: forwardAudit.groupId,
+      targetId: forwardAudit.id,
+      status: "success"
+    });
 
     return {
       progress,
@@ -589,6 +712,17 @@ export class ContentService {
     return Array.from(this.progressAuditTrail.values())
       .filter((event) => event.userId === userId && event.groupId === groupId && event.mediaItemId === mediaItemId)
       .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  }
+
+  getContentAuditEvents(limit = 250): ContentAuditEvent[] {
+    return this.auditEvents.slice(-Math.max(1, limit));
+  }
+
+  getSuspiciousActivity(limit = 100): Array<{ key: string; score: number; reason: string; lastObservedAt: string }> {
+    return Array.from(this.suspiciousActivity.entries())
+      .map(([key, value]) => ({ key, ...value }))
+      .sort((a, b) => (a.lastObservedAt < b.lastObservedAt ? 1 : -1))
+      .slice(0, Math.max(1, limit));
   }
 
   private toFeedPost(post: Post, progress: UserProgress): FeedPostView {
@@ -703,6 +837,82 @@ export class ContentService {
     const staleKeys = Array.from(this.mediaSearchCache.keys()).slice(0, this.mediaSearchCache.size - maxEntries);
     for (const key of staleKeys) {
       this.mediaSearchCache.delete(key);
+    }
+  }
+
+
+  private validateRequiredText(field: string, value: string | undefined, maxLength: number): void {
+    const normalized = value?.trim();
+    if (!normalized) {
+      throw new Error(`${field} is required.`);
+    }
+    if (normalized.length > maxLength) {
+      throw new Error(`${field} exceeds max length of ${maxLength}.`);
+    }
+  }
+
+  private sanitizeOptionalText(value: string | undefined, maxLength: number): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const sanitized = value.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, maxLength);
+    return sanitized ? this.encodeForOutput(sanitized) : undefined;
+  }
+
+  private sanitizeAndEncode(value: string, maxLength: number): string {
+    const sanitized = value.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, maxLength);
+    return this.encodeForOutput(sanitized);
+  }
+
+  private encodeForOutput(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  private assertInviteThrottle(userId: string): void {
+    const now = Date.now();
+    const existing = this.inviteThrottle.get(userId);
+    if (!existing) {
+      this.inviteThrottle.set(userId, { count: 1, windowStartedAtMs: now });
+      return;
+    }
+
+    if (now - existing.windowStartedAtMs > INVITE_WINDOW_MS) {
+      this.inviteThrottle.set(userId, { count: 1, windowStartedAtMs: now });
+      return;
+    }
+
+    existing.count += 1;
+    this.inviteThrottle.set(userId, existing);
+    if (existing.count > INVITE_MAX_PER_WINDOW) {
+      this.recordSuspicious(`invite_spam:${userId}`, "invite_spam");
+      throw new Error("Invite creation rate exceeded. Please wait before sending more invites.");
+    }
+  }
+
+  private recordSuspicious(key: string, reason: string): void {
+    const current = this.suspiciousActivity.get(key);
+    this.suspiciousActivity.set(key, {
+      score: (current?.score ?? 0) + 1,
+      reason,
+      lastObservedAt: new Date().toISOString()
+    });
+  }
+
+  private logAudit(event: Omit<ContentAuditEvent, "id" | "createdAt">): void {
+    this.auditEvents.push({
+      id: `audit_${this.generateId()}`,
+      createdAt: new Date().toISOString(),
+      ...event
+    });
+
+    if (this.auditEvents.length > 2000) {
+      this.auditEvents.shift();
     }
   }
 
