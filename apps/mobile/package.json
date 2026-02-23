@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@nospoilers/types": "0.1.0",
-    "@nospoilers/ui": "0.1.0"
+    "@nospoilers/ui": "0.1.0",
+    "@nospoilers/auth": "0.1.0"
   }
 }
