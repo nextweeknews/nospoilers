@@ -1,37 +1,28 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { Group } from "@nospoilers/types";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
+import { supabaseClient } from "./services/supabaseClient";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
 
 type MainView = "feed" | "groups" | "account";
+type LoadStatus = "loading" | "ready" | "empty" | "error";
 
-const demoGroup: Group = {
-  id: "group-1",
-  name: "Mystery Readers Club",
-  description: "Spoiler-safe discussions by chapter milestones.",
-  coverUrl: "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=200",
-  activeMediaId: "media-1",
-  media: [
-    {
-      id: "media-1",
-      kind: "book",
-      title: "The Last Heist",
-      coverUrl: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=300",
-      progress: { completed: 6, total: 12 }
-    }
-  ]
+type GroupEntity = {
+  id: string;
+  name: string;
+  description: string | null;
+  cover_url: string | null;
 };
 
-const demoFeed = [
-  { id: "post-1", title: "Chapter 6 reactions", body: "Use spoiler tags for anything after chapter 6.", meta: "12 comments" },
-  { id: "post-2", title: "Adaptation rumors", body: "Cast speculation thread is open for verified news only.", meta: "8 comments" },
-  { id: "post-3", title: "Weekend reading sprint", body: "Reading goal: chapters 7-9 by Sunday evening.", meta: "27 comments" }
-];
+type PostEntity = {
+  id: string;
+  preview_text: string | null;
+  created_at: string;
+};
 
 const getSystemMode = (): ThemeMode => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
@@ -44,7 +35,12 @@ export const App = () => {
     const saved = window.localStorage.getItem(THEME_KEY);
     return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
   });
-  const selectedMedia = useMemo(() => demoGroup.media[0], []);
+  const [groups, setGroups] = useState<GroupEntity[]>([]);
+  const [posts, setPosts] = useState<PostEntity[]>([]);
+  const [groupStatus, setGroupStatus] = useState<LoadStatus>("loading");
+  const [feedStatus, setFeedStatus] = useState<LoadStatus>("loading");
+  const [groupError, setGroupError] = useState<string>();
+  const [feedError, setFeedError] = useState<string>();
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -52,6 +48,62 @@ export const App = () => {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setGroups([]);
+      setPosts([]);
+      setGroupStatus("loading");
+      setFeedStatus("loading");
+      setGroupError(undefined);
+      setFeedError(undefined);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadData = async () => {
+      setGroupStatus("loading");
+      setFeedStatus("loading");
+      setGroupError(undefined);
+      setFeedError(undefined);
+
+      const [groupResult, postResult] = await Promise.all([
+        supabaseClient.from("groups").select("id,name,description,cover_url").order("created_at", { ascending: false }),
+        supabaseClient.from("posts").select("id,preview_text,created_at").order("created_at", { ascending: false })
+      ]);
+
+      if (isCancelled) {
+        return;
+      }
+
+      if (groupResult.error) {
+        setGroups([]);
+        setGroupStatus("error");
+        setGroupError(groupResult.error.message);
+      } else {
+        const loadedGroups = (groupResult.data as GroupEntity[] | null) ?? [];
+        setGroups(loadedGroups);
+        setGroupStatus(loadedGroups.length ? "ready" : "empty");
+      }
+
+      if (postResult.error) {
+        setPosts([]);
+        setFeedStatus("error");
+        setFeedError(postResult.error.message);
+      } else {
+        const loadedPosts = (postResult.data as PostEntity[] | null) ?? [];
+        setPosts(loadedPosts);
+        setFeedStatus(loadedPosts.length ? "ready" : "empty");
+      }
+    };
+
+    void loadData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentUser]);
 
   const onSignedIn = (result: ProviderLoginResult) => {
     setCurrentUser(result.user);
@@ -180,18 +232,31 @@ export const App = () => {
             />
           ) : null}
 
-          {mainView === "groups" ? <GroupScreen group={demoGroup} selectedMedia={selectedMedia} theme={theme} /> : null}
+          {mainView === "groups" ? (
+            <GroupScreen
+              group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: groups[0].cover_url } : undefined}
+              status={groupStatus}
+              errorMessage={groupError}
+              theme={theme}
+            />
+          ) : null}
 
           {mainView === "feed" ? (
-            <>
-              {demoFeed.map((post) => (
+            feedStatus === "loading" ? (
+              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>Loading feed posts from Supabase…</p></article>
+            ) : feedStatus === "error" ? (
+              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>Unable to load feed from backend: {feedError}</p></article>
+            ) : feedStatus === "empty" ? (
+              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>No real feed posts are available for this account yet.</p></article>
+            ) : (
+              posts.map((post) => (
                 <article key={post.id} style={feedCard(theme)}>
-                  <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{post.title}</h3>
-                  <p style={{ margin: 0, color: theme.colors.textSecondary }}>{post.body}</p>
-                  <small style={{ color: theme.colors.accentStrong, fontWeight: 600 }}>{post.meta}</small>
+                  <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Post {post.id.slice(0, 8)}</h3>
+                  <p style={{ margin: 0, color: theme.colors.textSecondary }}>{post.preview_text ?? "(No preview text provided.)"}</p>
+                  <small style={{ color: theme.colors.accentStrong, fontWeight: 600 }}>{new Date(post.created_at).toLocaleString()}</small>
                 </article>
-              ))}
-            </>
+              ))
+            )
           ) : null}
         </main>
       </div>
