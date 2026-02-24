@@ -139,6 +139,7 @@ const STATUS_TONE_COLORS: Record<StatusTone, string> = {
 
 const TERMS_URL = "/terms";
 const PRIVACY_POLICY_URL = "/privacy-policy";
+const PHONE_OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [authView, setAuthView] = useState<"phone" | "email">("phone");
@@ -147,6 +148,8 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [formattedPhone, setFormattedPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
+  const [resendAvailableAtMs, setResendAvailableAtMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -184,6 +187,20 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   }, [countryMenuOpen]);
 
   useEffect(() => {
+    if (!resendAvailableAtMs) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [resendAvailableAtMs]);
+
+  useEffect(() => {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const searchParams = new URLSearchParams(window.location.search);
     const callbackType = hashParams.get("type") ?? searchParams.get("type");
@@ -209,12 +226,20 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
+  const otpDigits = smsCode.replace(/\D/g, "").slice(0, 6);
+  const resendCountdownSeconds = resendAvailableAtMs ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000)) : 0;
+  const canResendOtp = resendCountdownSeconds === 0;
 
   const handlePhoneStart = async (event: FormEvent) => {
     event.preventDefault();
 
     if (phoneDigits.length !== 10) {
       setStatus({ message: "Enter a valid 10-digit phone number.", tone: "error" });
+      return;
+    }
+
+    if (challengeStarted && !canResendOtp) {
+      setStatus({ message: `Please wait ${resendCountdownSeconds}s before requesting another code.`, tone: "info" });
       return;
     }
 
@@ -225,12 +250,19 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
 
     setChallengeStarted(true);
-    setStatus({ message: "SMS verification code sent.", tone: "success" });
+    setResendAvailableAtMs(Date.now() + PHONE_OTP_RESEND_COOLDOWN_SECONDS * 1000);
+    setStatus({ message: "SMS verification code sent. It expires after 60 minutes.", tone: "success" });
   };
 
   const handlePhoneVerify = async (event: FormEvent) => {
     event.preventDefault();
-    const { data, error } = await verifySmsOtp(fullPhoneNumber, smsCode);
+
+    if (otpDigits.length !== 6) {
+      setStatus({ message: "Enter the 6-digit verification code.", tone: "error" });
+      return;
+    }
+
+    const { data, error } = await verifySmsOtp(fullPhoneNumber, otpDigits);
     if (error || !data.user || !data.session) {
       setStatus({ message: error?.message ?? "Unable to verify code.", tone: "error" });
       return;
@@ -411,8 +443,8 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                   />
                 </div>
               </label>
-              <button type="submit" style={smsButton(theme)}>
-                Continue with SMS
+              <button type="submit" style={smsButton(theme)} disabled={challengeStarted && !canResendOtp}>
+                {challengeStarted ? (canResendOtp ? "Resend SMS code" : `Resend in ${resendCountdownSeconds}s`) : "Continue with SMS"}
               </button>
             </form>
 
@@ -420,7 +452,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               <form onSubmit={handlePhoneVerify} style={{ display: "grid", gap: spacingTokens.sm }}>
                 <label style={{ color: theme.colors.textSecondary }}>
                   Verification code
-                  <input value={smsCode} onChange={(event) => setSmsCode(event.target.value)} placeholder="6-digit code" style={inputStyle(theme)} />
+                  <input value={smsCode} onChange={(event) => setSmsCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} style={inputStyle(theme)} />
                 </label>
                 <button type="submit" style={smsButton(theme)}>
                   Verify and continue
