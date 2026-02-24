@@ -13,7 +13,6 @@ import {
   updateCurrentUserPassword,
   verifySmsOtp
 } from "../services/authClient";
-import { supabaseClient } from "../services/supabaseClient";
 
 type CountryOption = {
   code: string;
@@ -149,10 +148,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
   const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | "forgot-password" | "update-password" | null>(null);
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
-  const [isHandlingOAuthCallback, setIsHandlingOAuthCallback] = useState(false);
-
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
-  const oauthExchangeStartedRef = useRef(false);
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
   const sortedCountryOptions = useMemo(
@@ -184,68 +180,20 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     return () => window.clearInterval(timer);
   }, [resendAvailableAtMs]);
 
-  // Handle callback URL state (OAuth / password recovery) and complete OAuth exchange.
+  // Handle password-recovery callback state.
   useEffect(() => {
-    let active = true;
-
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const searchParams = new URLSearchParams(window.location.search);
     const callbackType = hashParams.get("type") ?? searchParams.get("type");
-    const oauthCode = searchParams.get("code");
 
-    void (async () => {
-      try {
-        if (oauthCode && !oauthExchangeStartedRef.current) {
-          oauthExchangeStartedRef.current = true;
-          setIsHandlingOAuthCallback(true);
-          setStatus({ message: "Finishing Google sign-in…", tone: "info" });
-
-          // Supabase expects the code string here
-          const { error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
-
-          if (!active) return;
-
-          if (error) {
-            console.error("exchangeCodeForSession returned error:", {
-              message: error.message,
-              status: (error as any).status,
-              code: (error as any).code
-            });
-            setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
-            setIsHandlingOAuthCallback(false);
-            return;
-          }
-
-          // Remove ?code=... after successful exchange
-          const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-          window.history.replaceState({}, document.title, cleanUrl);
-
-          setIsHandlingOAuthCallback(false);
-        }
-
-        if (!active) return;
-
-        if (callbackType === "recovery") {
-          setAuthView("email");
-          setIsPasswordResetMode(true);
-          setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
-        }
-      } catch (err) {
-        if (!active) return;
-
-        console.error("exchangeCodeForSession threw:", err);
-        const message = err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
-        setStatus({ message: `Unable to finish Google sign-in. ${message}`, tone: "error" });
-        setIsHandlingOAuthCallback(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
+    if (callbackType === "recovery") {
+      setAuthView("email");
+      setIsPasswordResetMode(true);
+      setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
+    }
   }, []);
 
-  // Listen for auth events (including OAuth completion).
+  // Listen for auth events.
   useEffect(() => {
     const { data: authListener } = onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -265,18 +213,9 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     };
   }, [onSignedIn]);
 
-  // Catch already-restored sessions after page reload, but avoid racing during OAuth callback exchange.
+  // Catch already-restored sessions after page reload.
   useEffect(() => {
     let active = true;
-
-    const searchParams = new URLSearchParams(window.location.search);
-    const hasOAuthCode = searchParams.has("code");
-
-    if (hasOAuthCode || isHandlingOAuthCallback) {
-      return () => {
-        active = false;
-      };
-    }
 
     void (async () => {
       const { data, error } = await getSession();
@@ -296,7 +235,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     return () => {
       active = false;
     };
-  }, [onSignedIn, isHandlingOAuthCallback]);
+  }, [onSignedIn]);
 
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
@@ -651,7 +590,6 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               aria-label="Sign in with Google"
               onClick={handleGoogleOAuth}
               style={googleButton(theme)}
-              disabled={isHandlingOAuthCallback}
             >
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />

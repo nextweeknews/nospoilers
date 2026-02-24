@@ -4,6 +4,7 @@ import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { buildPostPreviewText, mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabasePostRow, type SupabaseUserProfileRow } from "@nospoilers/types";
 import { GroupScreen } from "./screens/GroupScreen";
+import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
@@ -274,12 +275,21 @@ export const App = () => {
   };
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
+  const pathname = window.location.pathname;
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
     setCurrentUser(undefined);
     setNeedsOnboarding(false);
   };
+
+  if (pathname === "/auth/callback") {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+        <AuthCallbackScreen theme={theme} />
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
