@@ -3,6 +3,7 @@ import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
+import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { supabaseClient } from "./services/supabaseClient";
 
@@ -25,6 +26,8 @@ type PostEntity = {
 };
 
 const getSystemMode = (): ThemeMode => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
 
 export const App = () => {
   const [mainView, setMainView] = useState<MainView>("feed");
@@ -123,6 +126,14 @@ export const App = () => {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
         <LoginScreen onSignedIn={onSignedIn} theme={theme} />
+      </div>
+    );
+  }
+
+  if (!hasCompleteProfile(currentUser)) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+        <OnboardingProfileScreen user={currentUser} theme={theme} onProfileCompleted={setCurrentUser} />
       </div>
     );
   }
