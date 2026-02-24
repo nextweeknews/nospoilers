@@ -212,7 +212,7 @@ export const App = () => {
           .select("groups(id,name,description,avatar_path)")
           .eq("user_id", currentUser.id)
           .eq("status", "active")
-          .order("created_at", { ascending: false }),
+          .order("joined_at", { ascending: false }),
         supabaseClient.from("posts").select("id,body_text,created_at").order("created_at", { ascending: false })
       ]);
 
