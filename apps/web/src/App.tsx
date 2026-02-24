@@ -1,8 +1,23 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
-import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
-import { buildPostPreviewText, mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabasePostRow, type SupabaseUserProfileRow } from "@nospoilers/types";
+import {
+  createTheme,
+  elevationTokens,
+  radiusTokens,
+  resolveThemePreference,
+  spacingTokens,
+  type BottomNavItem,
+  type ThemeMode,
+  type ThemePreference
+} from "@nospoilers/ui";
+import {
+  buildPostPreviewText,
+  mapAvatarPathToUiValue,
+  type SupabaseGroupRow,
+  type SupabasePostRow,
+  type SupabaseUserProfileRow
+} from "@nospoilers/types";
 import { GroupScreen } from "./screens/GroupScreen";
 import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -27,6 +42,7 @@ type GroupEntity = SupabaseGroupRow;
 type PostEntity = SupabasePostRow & {
   previewText: string | null;
 };
+
 type OptionRow = { id: string; title: string };
 
 const getSystemMode = (): ThemeMode => {
@@ -37,9 +53,9 @@ const getSystemMode = (): ThemeMode => {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 
-
-const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`)}`;
-
+const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`
+)}`;
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -76,9 +92,21 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
   };
 };
 
-const mapUserWithProfile = async (user: User, session: Session): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
+const mapUserWithProfile = async (
+  user: User,
+  session: Session
+): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_path").eq("id", user.id).maybeSingle();
+  const { data: profile, error } = await supabaseClient
+    .from("users")
+    .select("id,username,display_name,avatar_path")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[app] failed to load user profile row", error);
+  }
+
   const normalizedProfile = (profile as ProfileRecord | null) ?? null;
 
   return {
@@ -148,15 +176,15 @@ export const App = () => {
     if (isAuthCallbackRoute) {
       return;
     }
-  
+
     let cancelled = false;
-  
+
     const syncSession = async () => {
       try {
         const { data, error } = await getSession();
         if (error) throw error;
         if (cancelled) return;
-  
+
         await syncAuthState(data.session);
       } catch (_error) {
         if (cancelled) return;
@@ -164,11 +192,10 @@ export const App = () => {
         setNeedsOnboarding(false);
       }
     };
-  
+
     void syncSession();
-  
+
     const { data } = onAuthStateChange((_event, session) => {
-      // Avoid async callback directly in onAuthStateChange; defer async work.
       void (async () => {
         try {
           if (cancelled) return;
@@ -180,7 +207,7 @@ export const App = () => {
         }
       })();
     });
-  
+
     return () => {
       cancelled = true;
       data.subscription.unsubscribe();
@@ -221,18 +248,21 @@ export const App = () => {
       }
 
       if (groupResult.error) {
+        console.error("[app] group_memberships load failed", groupResult.error);
         setGroups([]);
         setGroupStatus("error");
         setGroupError(groupResult.error.message);
       } else {
         const memberships = (groupResult.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
-        const loadedGroups = memberships
-          .flatMap((membership) => (Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []));
+        const loadedGroups = memberships.flatMap((membership) =>
+          Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []
+        );
         setGroups(loadedGroups);
         setGroupStatus(loadedGroups.length ? "ready" : "empty");
       }
 
       if (postResult.error) {
+        console.error("[app] posts load failed", postResult.error);
         setPosts([]);
         setFeedStatus("error");
         setFeedError(postResult.error.message);
@@ -258,24 +288,84 @@ export const App = () => {
       return;
     }
 
-    void supabaseClient.from("catalog_items").select("id,title").limit(20).then(({ data }) => setCatalogItems((data as OptionRow[] | null) ?? []));
-    void supabaseClient.from("catalog_progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as OptionRow[] | null) ?? []));
+    void supabaseClient
+      .from("catalog_items")
+      .select("id,title")
+      .limit(20)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[app] catalog_items load failed", error);
+          setCatalogItems([]);
+          return;
+        }
+        setCatalogItems((data as OptionRow[] | null) ?? []);
+      });
+
+    void supabaseClient
+      .from("catalog_progress_units")
+      .select("id,title")
+      .limit(20)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[app] catalog_progress_units load failed", error);
+          setProgressUnits([]);
+          return;
+        }
+        setProgressUnits((data as OptionRow[] | null) ?? []);
+      });
 
     void Promise.all([
       supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
-      supabaseClient.from("post_reactions").select("id,reaction,created_at").order("created_at", { ascending: false }).limit(20)
+      supabaseClient
+        .from("post_reactions")
+        .select("post_id,user_id,emoji,created_at")
+        .order("created_at", { ascending: false })
+        .limit(20)
     ]).then(([comments, reactions]) => {
-      const commentEvents = ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `comment-${entry.id}`, type: "Comment", createdAt: entry.created_at, text: entry.body_text ?? "New comment" }));
-      const reactionEvents = ((reactions.data as Array<{ id: string; reaction: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `reaction-${entry.id}`, type: "Reaction", createdAt: entry.created_at, text: entry.reaction ?? "New reaction" }));
+      if (comments.error) {
+        console.error("[app] post_comments load failed", comments.error);
+      }
+      if (reactions.error) {
+        console.error("[app] post_reactions load failed", reactions.error);
+      }
+
+      const commentEvents =
+        ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({
+          id: `comment-${entry.id}`,
+          type: "Comment",
+          createdAt: entry.created_at,
+          text: entry.body_text ?? "New comment"
+        }));
+
+      const reactionEvents =
+        ((reactions.data as Array<{ post_id: string; user_id: string; emoji: string | null; created_at: string }> | null) ?? []).map(
+          (entry) => ({
+            id: `reaction-${entry.post_id}-${entry.user_id}-${entry.created_at}`,
+            type: "Reaction",
+            createdAt: entry.created_at,
+            text: entry.emoji ?? "New reaction"
+          })
+        );
+
       setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
     });
   }, [currentUser]);
 
   const searchResults = progressUnits
-    .map((unit) => ({ id: unit.id, title: unit.title, chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null, episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null }))
+    .map((unit) => ({
+      id: unit.id,
+      title: unit.title,
+      chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null,
+      episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null
+    }))
     .filter((item) => {
       const needle = searchQuery.toLowerCase();
-      return !needle || item.title.toLowerCase().includes(needle) || item.chapter?.toLowerCase().includes(needle) || item.episode?.toLowerCase().includes(needle);
+      return (
+        !needle ||
+        item.title.toLowerCase().includes(needle) ||
+        item.chapter?.toLowerCase().includes(needle) ||
+        item.episode?.toLowerCase().includes(needle)
+      );
     });
 
   const onSignedIn = (result: ProviderLoginResult) => {
@@ -299,7 +389,15 @@ export const App = () => {
 
   if (pathname === "/auth/callback") {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: theme.colors.background,
+          padding: spacingTokens.lg
+        }}
+      >
         <AuthCallbackScreen theme={theme} />
       </div>
     );
@@ -307,7 +405,15 @@ export const App = () => {
 
   if (!currentUser) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: theme.colors.background,
+          padding: spacingTokens.lg
+        }}
+      >
         <LoginScreen onSignedIn={onSignedIn} theme={theme} />
       </div>
     );
@@ -315,7 +421,15 @@ export const App = () => {
 
   if (needsOnboarding) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: theme.colors.background,
+          padding: spacingTokens.lg
+        }}
+      >
         <OnboardingProfileScreen
           user={currentUser}
           theme={theme}
@@ -330,7 +444,15 @@ export const App = () => {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background: theme.colors.background,
+        padding: spacingTokens.lg
+      }}
+    >
       <div
         style={{
           width: "min(430px, 100%)",
@@ -344,7 +466,16 @@ export const App = () => {
           gridTemplateRows: "auto 1fr auto"
         }}
       >
-        <header style={{ padding: spacingTokens.md, borderBottom: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: spacingTokens.sm }}>
+        <header
+          style={{
+            padding: spacingTokens.md,
+            borderBottom: `1px solid ${theme.colors.border}`,
+            display: "grid",
+            gridTemplateColumns: "1fr auto auto",
+            alignItems: "center",
+            gap: spacingTokens.sm
+          }}
+        >
           <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 18 }}>NoSpoilers</h2>
 
           <div style={{ position: "relative", justifySelf: "end" }}>
@@ -352,11 +483,23 @@ export const App = () => {
               type="button"
               aria-label="Account menu"
               onClick={() => setMenuOpen((current) => !current)}
-              style={{ background: "transparent", border: `1px solid ${theme.colors.border}`, borderRadius: 12, color: theme.colors.textPrimary, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}
+              style={{
+                background: "transparent",
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: 12,
+                color: theme.colors.textPrimary,
+                padding: "8px 10px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 10
+              }}
             >
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{currentUser.displayName ?? "Reader"}</div>
-                <div style={{ fontSize: 11, color: theme.colors.textSecondary }}>@{currentUser.username ?? "nospoiler"}</div>
+                <div style={{ fontSize: 11, color: theme.colors.textSecondary }}>
+                  @{currentUser.username ?? "nospoiler"}
+                </div>
               </div>
               <img
                 src={currentUser.avatarUrl?.trim() || DEFAULT_AVATAR_PLACEHOLDER}
@@ -365,13 +508,49 @@ export const App = () => {
               />
               <span style={{ letterSpacing: 1 }}>⋮</span>
             </button>
-            {authStatus ? <small style={{ color: theme.colors.textSecondary, justifySelf: "end" }}>{authStatus}</small> : null}
+
+            {authStatus ? (
+              <small style={{ color: theme.colors.textSecondary, justifySelf: "end" }}>{authStatus}</small>
+            ) : null}
+
             {menuOpen ? (
-              <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: 12, boxShadow: elevationTokens.low, overflow: "hidden", zIndex: 5 }}>
-                <button type="button" onClick={() => { setMainView("profile"); setMenuOpen(false); }} style={menuItem(theme)}>
+              <div
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 8px)",
+                  background: theme.colors.surface,
+                  border: `1px solid ${theme.colors.border}`,
+                  borderRadius: 12,
+                  boxShadow: elevationTokens.low,
+                  overflow: "hidden",
+                  zIndex: 5
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainView("profile");
+                    setMenuOpen(false);
+                  }}
+                  style={menuItem(theme)}
+                >
                   Profile
                 </button>
-                <button type="button" onClick={async () => { const { error } = await signOut(); if (error) { setAuthStatus(`Unable to sign out: ${error.message}`); return; } setAuthStatus("Signed out."); setMainView("groups"); setCurrentUser(undefined); }} style={menuItem(theme)}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const { error } = await signOut();
+                    if (error) {
+                      setAuthStatus(`Unable to sign out: ${error.message}`);
+                      return;
+                    }
+                    setAuthStatus("Signed out.");
+                    setMainView("groups");
+                    setCurrentUser(undefined);
+                  }}
+                  style={menuItem(theme)}
+                >
                   Log out
                 </button>
               </div>
@@ -399,24 +578,38 @@ export const App = () => {
           </button>
         </header>
 
-        <main style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.md, background: theme.colors.background }}>
+        <main
+          style={{
+            overflowY: "auto",
+            padding: spacingTokens.md,
+            display: "grid",
+            alignContent: "start",
+            gap: spacingTokens.md,
+            background: theme.colors.background
+          }}
+        >
           {mainView === "profile" ? (
             showProfileSettings ? (
-            <ProfileSettingsScreen
-              user={currentUser}
-              onProfileUpdated={setCurrentUser}
-              onAccountDeleted={() => {
-                setCurrentUser(undefined);
-                setNeedsOnboarding(false);
-                setMainView("groups");
-                setMenuOpen(false);
-              }}
-              onThemePreferenceChanged={onThemePreferenceChanged}
-              themePreference={themePreference}
-              theme={theme}
-            />
+              <ProfileSettingsScreen
+                user={currentUser}
+                onProfileUpdated={setCurrentUser}
+                onAccountDeleted={() => {
+                  setCurrentUser(undefined);
+                  setNeedsOnboarding(false);
+                  setMainView("groups");
+                  setMenuOpen(false);
+                }}
+                onThemePreferenceChanged={onThemePreferenceChanged}
+                themePreference={themePreference}
+                theme={theme}
+              />
             ) : (
-              <ProfileTabScreen theme={theme} user={currentUser} onEditProfile={() => setShowProfileSettings(true)} onAccountSettings={() => setShowProfileSettings(true)} />
+              <ProfileTabScreen
+                theme={theme}
+                user={currentUser}
+                onEditProfile={() => setShowProfileSettings(true)}
+                onAccountSettings={() => setShowProfileSettings(true)}
+              />
             )
           ) : null}
 
@@ -437,10 +630,26 @@ export const App = () => {
 
           {mainView === "notifications" ? <NotificationsScreen theme={theme} events={notifications} /> : null}
 
-          {mainView === "for-you" ? <SearchScreen theme={theme} query={searchQuery} onQueryChange={setSearchQuery} results={searchResults} recent={searchResults.slice(0, 3)} popular={searchResults.slice(3, 6)} /> : null}
+          {mainView === "for-you" ? (
+            <SearchScreen
+              theme={theme}
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              results={searchResults}
+              recent={searchResults.slice(0, 3)}
+              popular={searchResults.slice(3, 6)}
+            />
+          ) : null}
         </main>
 
-        <BottomNav activeTab={mainView} onSelect={(view) => { setMainView(view); setMenuOpen(false); }} theme={theme} />
+        <BottomNav
+          activeTab={mainView}
+          onSelect={(view) => {
+            setMainView(view);
+            setMenuOpen(false);
+          }}
+          theme={theme}
+        />
       </div>
 
       <PostComposerSheet
@@ -455,33 +664,89 @@ export const App = () => {
             return;
           }
 
-          const { data: inserted, error } = await supabaseClient.from("posts").insert({
+          const postInsertPayload: Record<string, unknown> = {
             author_user_id: currentUser.id,
             body_text: payload.body_text,
-            public: payload.public,
             group_id: payload.group_id,
             catalog_item_id: payload.catalog_item_id,
             progress_unit_id: payload.progress_unit_id,
             tenor_gif_id: payload.tenor_gif_id,
             tenor_gif_url: payload.tenor_gif_url
-          }).select("id,body_text,created_at").single();
+          };
+
+          const { data: inserted, error } = await supabaseClient
+            .from("posts")
+            .insert(postInsertPayload)
+            .select("id,body_text,created_at")
+            .single();
+
           if (error || !inserted) {
+            console.error("[app] post insert failed", error);
             return;
           }
 
           if (payload.attachments.length) {
-            await supabaseClient.from("post_attachments").insert(payload.attachments.map((attachment) => ({ post_id: inserted.id, media_url: attachment.url, media_kind: attachment.kind, bytes: attachment.bytes })));
+            const attachmentRows = payload.attachments.map((attachment, index) => ({
+              post_id: inserted.id,
+              kind: attachment.kind,
+              storage_path: attachment.url, // temporary mapping until storage upload flow stores actual path
+              size_bytes: attachment.bytes ?? null,
+              sort_order: index
+            }));
+
+            const { error: attachmentError } = await supabaseClient.from("post_attachments").insert(attachmentRows);
+
+            if (attachmentError) {
+              console.error("[app] post_attachments insert failed", attachmentError);
+            }
           }
-          setPosts((prev) => [{ ...(inserted as SupabasePostRow), previewText: buildPostPreviewText(inserted.body_text) }, ...prev]);
+
+          setPosts((prev) => [
+            { ...(inserted as SupabasePostRow), previewText: buildPostPreviewText(inserted.body_text) },
+            ...prev
+          ]);
         }}
       />
 
       {showCreateGroupSheet ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>
-          <div style={{ width: "min(430px, 100%)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.md, display: "grid", gap: spacingTokens.sm }}>
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "grid",
+            placeItems: "end center",
+            padding: spacingTokens.lg
+          }}
+        >
+          <div
+            style={{
+              width: "min(430px, 100%)",
+              background: theme.colors.surface,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: radiusTokens.lg,
+              padding: spacingTokens.md,
+              display: "grid",
+              gap: spacingTokens.sm
+            }}
+          >
             <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create group</h3>
-            <p style={{ margin: 0, color: theme.colors.textSecondary }}>This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.</p>
-            <button type="button" onClick={() => setShowCreateGroupSheet(false)} style={{ border: "none", borderRadius: radiusTokens.md, padding: "10px 14px", background: theme.colors.accent, color: theme.colors.accentText, fontWeight: 700, cursor: "pointer" }}>
+            <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+              This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowCreateGroupSheet(false)}
+              style={{
+                border: "none",
+                borderRadius: radiusTokens.md,
+                padding: "10px 14px",
+                background: theme.colors.accent,
+                color: theme.colors.accentText,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
               Close
             </button>
           </div>
@@ -501,6 +766,7 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   cursor: "pointer"
 });
 
+// Kept in case you use it again shortly.
 const feedCard = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   background: theme.colors.surface,
   border: `1px solid ${theme.colors.border}`,
