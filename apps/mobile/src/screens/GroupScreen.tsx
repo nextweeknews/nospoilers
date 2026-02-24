@@ -1,4 +1,5 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { AppText } from "../components/Typography";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 
 type GroupSummary = {
@@ -27,14 +28,14 @@ export const GroupScreen = ({ group, status, errorMessage, theme }: GroupScreenP
       <View style={[styles.topBar, { borderBottomColor: theme.colors.border }]}>
         {group?.coverUrl ? <Image source={{ uri: group.coverUrl }} style={styles.groupCover} /> : null}
         <View style={styles.headerText}>
-          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{group?.name ?? "Your Groups"}</Text>
-          <Text style={[styles.progress, { color: theme.colors.textSecondary }]}>{group?.description ?? "Real group data appears here after loading."}</Text>
+          <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>{group?.name ?? "Your Groups"}</AppText>
+          <AppText style={[styles.progress, { color: theme.colors.textSecondary }]}>{group?.description ?? "Real group data appears here after loading."}</AppText>
         </View>
       </View>
 
       {status !== "ready" ? (
         <View style={[styles.placeholder, { borderColor: theme.colors.border }]}> 
-          <Text style={[styles.progress, { color: theme.colors.textSecondary }]}>{placeholderText}</Text>
+          <AppText style={[styles.progress, { color: theme.colors.textSecondary }]}>{placeholderText}</AppText>
         </View>
       ) : null}
     </View>
