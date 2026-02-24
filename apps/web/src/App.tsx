@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
@@ -104,19 +104,8 @@ export const App = () => {
   const [feedStatus, setFeedStatus] = useState<LoadStatus>("loading");
   const [groupError, setGroupError] = useState<string>();
   const [feedError, setFeedError] = useState<string>();
-  const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
-  const authResolvedRef = useRef(false);
-
-  const markAuthResolved = () => {
-    if (authResolvedRef.current) {
-      return;
-    }
-
-    authResolvedRef.current = true;
-    setAuthResolved(true);
-  };
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -148,18 +137,6 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    let isCancelled = false;
-    const authResolveTimeout = window.setTimeout(() => {
-      if (authResolvedRef.current || isCancelled) {
-        return;
-      }
-
-      setCurrentUser(undefined);
-      setNeedsOnboarding(false);
-      setAuthStatus("Sign-in check took too long. Please try signing in again.");
-      markAuthResolved();
-    }, 2000);
-
     const syncSession = async () => {
       try {
         const { data, error } = await getSession();
@@ -171,11 +148,6 @@ export const App = () => {
       } catch (_error) {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
-      } finally {
-        if (!isCancelled) {
-          window.clearTimeout(authResolveTimeout);
-          markAuthResolved();
-        }
       }
     };
 
@@ -187,23 +159,16 @@ export const App = () => {
       } catch (_error) {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
-      } finally {
-        if (!isCancelled) {
-          window.clearTimeout(authResolveTimeout);
-          markAuthResolved();
-        }
       }
     });
 
     return () => {
-      isCancelled = true;
-      window.clearTimeout(authResolveTimeout);
       data.subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
-    if (!authResolved || !currentUser) {
+    if (!currentUser) {
       setGroups([]);
       setPosts([]);
       setGroupStatus("loading");
@@ -275,19 +240,7 @@ export const App = () => {
     await signOut();
     setCurrentUser(undefined);
     setNeedsOnboarding(false);
-    setAuthResolved(true);
   };
-
-  if (!authResolved) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
-        <div style={{ display: "grid", gap: spacingTokens.sm, justifyItems: "center", color: theme.colors.textSecondary }}>
-          <progress aria-label="Signing you in" style={{ width: 120 }} />
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Signing you in…</p>
-        </div>
-      </div>
-    );
-  }
 
   if (!currentUser) {
     return (
