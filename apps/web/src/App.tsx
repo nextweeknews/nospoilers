@@ -35,7 +35,10 @@ const getSystemMode = (): ThemeMode => {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 
-const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
+const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.username?.trim());
+
+const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`)}`;
+
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -276,7 +279,7 @@ export const App = () => {
                 <div style={{ fontSize: 11, color: theme.colors.textSecondary }}>@{currentUser.username ?? "nospoiler"}</div>
               </div>
               <img
-                src={currentUser.avatarUrl ?? "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&h=80&fit=crop"}
+                src={currentUser.avatarUrl?.trim() || DEFAULT_AVATAR_PLACEHOLDER}
                 alt="Your avatar"
                 style={{ width: 28, height: 28, borderRadius: 999, objectFit: "cover" }}
               />
