@@ -35,9 +35,10 @@ const validateUsername = (value: string): UsernameFeedback => {
 };
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
+  const defaultStatus = "Finish profile setup to continue.";
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
-  const [status, setStatus] = useState("Finish profile setup to continue.");
+  const [status, setStatus] = useState(defaultStatus);
   const [saving, setSaving] = useState(false);
   const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "" });
 
@@ -100,7 +101,22 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Complete your profile</AppText>
       <AppText style={{ color: theme.colors.textSecondary }}>Add a username before entering NoSpoilers. Display name is optional and defaults to your username.</AppText>
-      <AppTextInput value={username} onChangeText={(value) => setUsername(value.toLowerCase())} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} autoCapitalize="none" maxLength={16} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput
+        value={username}
+        onChangeText={(value) => {
+          const nextUsername = value.toLowerCase();
+          setUsername(nextUsername);
+
+          if (validateUsername(nextUsername.trim()).tone !== "error") {
+            setStatus(defaultStatus);
+          }
+        }}
+        placeholder="Username"
+        placeholderTextColor={theme.colors.textSecondary}
+        autoCapitalize="none"
+        maxLength={16}
+        style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+      />
       <AppTextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name (optional)" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <AppText style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>{usernameFeedback.message}</AppText>
 
@@ -139,20 +155,19 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
               username: nextUsername
             });
 
-            const { error: userUpsertError } = await supabaseClient.from("users").upsert(
-              {
-                id: user.id,
-                username: nextUsername,
-                display_name: nextDisplayName || nextUsername,
-                email: user.email ?? null,
-                avatar_url: updatedUser.avatarUrl ?? null,
-                updated_at: new Date().toISOString()
-              },
-              { onConflict: "id" }
-            );
+            const profilePayload = {
+              id: user.id,
+              username: nextUsername,
+              display_name: nextDisplayName || nextUsername,
+              email: user.email ?? null,
+              avatar_url: updatedUser.avatarUrl ?? null,
+              updated_at: new Date().toISOString()
+            };
 
-            if (userUpsertError) {
-              setStatus(userUpsertError.message);
+            const { error: userInsertError } = await supabaseClient.from("users").insert(profilePayload);
+
+            if (userInsertError && userInsertError.code !== "23505") {
+              setStatus(userInsertError.message);
               return;
             }
 

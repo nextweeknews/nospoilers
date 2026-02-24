@@ -22,7 +22,6 @@ type GroupEntity = {
 
 type GroupLoadStatus = "loading" | "ready" | "empty" | "error";
 
-const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.username?.trim());
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -43,6 +42,7 @@ const mapUser = (user: User, session: Session): AuthUser => ({
 
 
 type ProfileRecord = {
+  id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -64,10 +64,15 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
   };
 };
 
-const mapUserWithProfile = async (user: User, session: Session): Promise<AuthUser> => {
+const mapUserWithProfile = async (user: User, session: Session): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("users").select("username,display_name,avatar_url").eq("id", user.id).maybeSingle();
-  return mergeProfileIntoUser(mappedUser, profile as ProfileRecord | null);
+  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  const normalizedProfile = (profile as ProfileRecord | null) ?? null;
+
+  return {
+    user: mergeProfileIntoUser(mappedUser, normalizedProfile),
+    needsOnboarding: !normalizedProfile
+  };
 };
 export default function App() {
   const [activeTab, setActiveTab] = useState("groups");
@@ -77,6 +82,7 @@ export default function App() {
   const [groupError, setGroupError] = useState<string>();
   const [groups, setGroups] = useState<GroupEntity[]>([]);
   const [authResolved, setAuthResolved] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const colorScheme = useColorScheme();
   const theme = createTheme(resolveThemePreference(colorScheme === "dark" ? "dark" : "light", themePreference));
 
@@ -84,10 +90,12 @@ export default function App() {
     const syncSession = async () => {
       const { data } = await getSession();
       if (data.session?.user) {
-        const userWithProfile = await mapUserWithProfile(data.session.user, data.session);
-        setCurrentUser(userWithProfile);
+        const mapped = await mapUserWithProfile(data.session.user, data.session);
+        setCurrentUser(mapped.user);
+        setNeedsOnboarding(mapped.needsOnboarding);
       } else {
         setCurrentUser(undefined);
+        setNeedsOnboarding(false);
       }
       setAuthResolved(true);
     };
@@ -96,10 +104,12 @@ export default function App() {
 
     const { data } = onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        const userWithProfile = await mapUserWithProfile(session.user, session);
-        setCurrentUser(userWithProfile);
+        const mapped = await mapUserWithProfile(session.user, session);
+        setCurrentUser(mapped.user);
+        setNeedsOnboarding(mapped.needsOnboarding);
       } else {
         setCurrentUser(undefined);
+        setNeedsOnboarding(false);
       }
       setAuthResolved(true);
     });
@@ -147,13 +157,13 @@ export default function App() {
   }, [currentUser]);
 
   const onSignedIn = (result: ProviderLoginResult) => {
-    setCurrentUser(result.user);
     setThemePreference(result.user.preferences?.themePreference ?? "system");
   };
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
     setCurrentUser(undefined);
+    setNeedsOnboarding(false);
     setAuthResolved(true);
   };
 
@@ -165,11 +175,14 @@ export default function App() {
         </AppText>
         {!authResolved || !currentUser ? (
           <LoginScreen onSignedIn={onSignedIn} theme={theme} />
-        ) : !hasCompleteProfile(currentUser) ? (
+        ) : needsOnboarding ? (
           <OnboardingProfileScreen
             user={currentUser}
             theme={theme}
-            onProfileCompleted={setCurrentUser}
+            onProfileCompleted={(user) => {
+              setCurrentUser(user);
+              setNeedsOnboarding(false);
+            }}
             onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
           />
         ) : (
@@ -180,6 +193,7 @@ export default function App() {
                 onProfileUpdated={setCurrentUser}
                 onAccountDeleted={() => {
                   setCurrentUser(undefined);
+                  setNeedsOnboarding(false);
                   setActiveTab("groups");
                 }}
                 theme={theme}
