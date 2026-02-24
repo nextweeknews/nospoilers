@@ -42,42 +42,82 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
       const code = searchParams.get("code");
 
       if (!code) {
+        if (!active) return;
         setStatus("error");
-        setErrorMessage("Missing sign-in code in callback URL. Please try signing in again.");
+        setErrorMessage(
+          "Missing sign-in code in callback URL. Please try signing in again."
+        );
         return;
       }
 
-  try {
-    const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
-  
-    if (!active) return;
-  
-    if (error) {
-      setStatus("error");
-      setErrorMessage(`Unable to finish sign-in: ${error.message}`);
-      return;
-    }
-  
-    window.location.replace(returnPath);
-  } catch (err) {
-    if (!active) return;
-  
-    const message =
-      err instanceof Error ? err.message : "Unknown error during code exchange.";
-  
-    setStatus("error");
-    setErrorMessage(`Unable to finish sign-in: ${message}`);
-  }
+      try {
+        const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
+
+        if (!active) return;
+
+        if (error) {
+          setStatus("error");
+          setErrorMessage(`Unable to finish sign-in: ${error.message}`);
+          return;
+        }
+
+        window.location.replace(returnPath);
+      } catch (err) {
+        if (!active) return;
+
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Unknown error during code exchange.";
+
+        setStatus("error");
+        setErrorMessage(`Unable to finish sign-in: ${message}`);
+      }
+    };
+
+    void handleCodeExchange();
+
+    return () => {
+      active = false;
+    };
+  }, [returnPath]);
 
   if (status === "error") {
     return (
-      <section style={{ width: "min(420px, 100%)", padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}>
-        <h1 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 20 }}>Sign-in could not be completed</h1>
-        <p style={{ margin: 0, color: theme.colors.textSecondary }}>{errorMessage}</p>
+      <section
+        style={{
+          width: "min(420px, 100%)",
+          padding: spacingTokens.lg,
+          display: "grid",
+          gap: spacingTokens.sm,
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            color: theme.colors.textPrimary,
+            fontSize: 20,
+          }}
+        >
+          Sign-in could not be completed
+        </h1>
+
+        <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+          {errorMessage}
+        </p>
+
         <button
           type="button"
           onClick={() => window.location.assign("/")}
-          style={{ border: "none", borderRadius: 10, padding: "10px 14px", background: theme.colors.accent, color: theme.colors.accentText, fontWeight: 700, cursor: "pointer" }}
+          style={{
+            border: "none",
+            borderRadius: 10,
+            padding: "10px 14px",
+            background: theme.colors.accent,
+            color: theme.colors.accentText,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
         >
           Back to sign in
         </button>
@@ -85,5 +125,9 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
     );
   }
 
-  return <p style={{ margin: 0, color: theme.colors.textSecondary }}>Finishing sign-in…</p>;
+  return (
+    <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+      Finishing sign-in…
+    </p>
+  );
 };
