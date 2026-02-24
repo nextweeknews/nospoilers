@@ -35,11 +35,12 @@ const validateUsername = (value: string): UsernameFeedback => {
 };
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
+  const defaultStatus = "Finish your profile to continue.";
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
   const [avatarFileName, setAvatarFileName] = useState<string>();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState("Finish your profile to continue.");
+  const [status, setStatus] = useState(defaultStatus);
   const [saving, setSaving] = useState(false);
   const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "" });
 
@@ -108,7 +109,20 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
 
       <label style={labelStyle(theme)}>
         Username
-        <input value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} placeholder="Username" maxLength={16} style={inputStyle(theme)} />
+        <input
+          value={username}
+          onChange={(event) => {
+            const nextUsername = event.target.value.toLowerCase();
+            setUsername(nextUsername);
+
+            if (validateUsername(nextUsername.trim()).tone !== "error") {
+              setStatus(defaultStatus);
+            }
+          }}
+          placeholder="Username"
+          maxLength={16}
+          style={inputStyle(theme)}
+        />
         <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
           {usernameFeedback.message}
         </small>
@@ -190,20 +204,19 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
               username: nextUsername
             });
 
-            const { error: userUpsertError } = await supabaseClient.from("users").upsert(
-              {
-                id: user.id,
-                username: nextUsername,
-                display_name: nextDisplayName || nextUsername,
-                email: user.email ?? null,
-                avatar_url: updatedUser.avatarUrl ?? null,
-                updated_at: new Date().toISOString()
-              },
-              { onConflict: "id" }
-            );
+            const profilePayload = {
+              id: user.id,
+              username: nextUsername,
+              display_name: nextDisplayName || nextUsername,
+              email: user.email ?? null,
+              avatar_url: updatedUser.avatarUrl ?? null,
+              updated_at: new Date().toISOString()
+            };
 
-            if (userUpsertError) {
-              setStatus(userUpsertError.message);
+            const { error: userInsertError } = await supabaseClient.from("users").insert(profilePayload);
+
+            if (userInsertError && userInsertError.code !== "23505") {
+              setStatus(userInsertError.message);
               return;
             }
 

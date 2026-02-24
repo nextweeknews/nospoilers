@@ -35,7 +35,6 @@ const getSystemMode = (): ThemeMode => {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 
-const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.username?.trim());
 
 const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`)}`;
 
@@ -57,6 +56,7 @@ const mapUser = (user: User, session: Session): AuthUser => ({
 });
 
 type ProfileRecord = {
+  id: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
@@ -78,10 +78,15 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
   };
 };
 
-const mapUserWithProfile = async (user: User, session: Session): Promise<AuthUser> => {
+const mapUserWithProfile = async (user: User, session: Session): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("users").select("username,display_name,avatar_url").eq("id", user.id).maybeSingle();
-  return mergeProfileIntoUser(mappedUser, profile as ProfileRecord | null);
+  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  const normalizedProfile = (profile as ProfileRecord | null) ?? null;
+
+  return {
+    user: mergeProfileIntoUser(mappedUser, normalizedProfile),
+    needsOnboarding: !normalizedProfile
+  };
 };
 
 export const App = () => {
@@ -100,6 +105,7 @@ export const App = () => {
   const [groupError, setGroupError] = useState<string>();
   const [feedError, setFeedError] = useState<string>();
   const [authResolved, setAuthResolved] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
 
   useEffect(() => {
@@ -123,10 +129,12 @@ export const App = () => {
     const syncSession = async () => {
       const { data } = await getSession();
       if (data.session?.user) {
-        const userWithProfile = await mapUserWithProfile(data.session.user, data.session);
-        setCurrentUser(userWithProfile);
+        const mapped = await mapUserWithProfile(data.session.user, data.session);
+        setCurrentUser(mapped.user);
+        setNeedsOnboarding(mapped.needsOnboarding);
       } else {
         setCurrentUser(undefined);
+        setNeedsOnboarding(false);
       }
       setAuthResolved(true);
     };
@@ -135,10 +143,12 @@ export const App = () => {
 
     const { data } = onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        const userWithProfile = await mapUserWithProfile(session.user, session);
-        setCurrentUser(userWithProfile);
+        const mapped = await mapUserWithProfile(session.user, session);
+        setCurrentUser(mapped.user);
+        setNeedsOnboarding(mapped.needsOnboarding);
       } else {
         setCurrentUser(undefined);
+        setNeedsOnboarding(false);
       }
       setAuthResolved(true);
     });
@@ -205,7 +215,6 @@ export const App = () => {
   }, [currentUser]);
 
   const onSignedIn = (result: ProviderLoginResult) => {
-    setCurrentUser(result.user);
     if (result.user.preferences?.themePreference) {
       setThemePreference(result.user.preferences.themePreference);
     }
@@ -221,6 +230,7 @@ export const App = () => {
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
     setCurrentUser(undefined);
+    setNeedsOnboarding(false);
     setAuthResolved(true);
   };
 
@@ -232,13 +242,16 @@ export const App = () => {
     );
   }
 
-  if (!hasCompleteProfile(currentUser)) {
+  if (needsOnboarding) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
         <OnboardingProfileScreen
           user={currentUser}
           theme={theme}
-          onProfileCompleted={setCurrentUser}
+          onProfileCompleted={(user) => {
+            setCurrentUser(user);
+            setNeedsOnboarding(false);
+          }}
           onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
         />
       </div>
@@ -347,6 +360,7 @@ export const App = () => {
               onProfileUpdated={setCurrentUser}
               onAccountDeleted={() => {
                 setCurrentUser(undefined);
+                setNeedsOnboarding(false);
                 setMainView("feed");
                 setMenuOpen(false);
               }}
