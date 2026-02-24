@@ -24,7 +24,7 @@ import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
-import { SearchScreen } from "./screens/SearchScreen";
+import { PublicFeedScreen } from "./screens/PublicFeedScreen";
 import { NotificationsScreen } from "./screens/NotificationsScreen";
 import { ProfileTabScreen } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
@@ -140,7 +140,7 @@ export const App = () => {
   const [createGroupError, setCreateGroupError] = useState<string>();
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [groupPosts, setGroupPosts] = useState<PostEntity[]>([]);
   const [catalogItems, setCatalogItems] = useState<OptionRow[]>([]);
   const [progressUnits, setProgressUnits] = useState<OptionRow[]>([]);
   const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
@@ -201,17 +201,15 @@ export const App = () => {
 
     void syncSession();
 
-    const { data } = onAuthStateChange((_event, session) => {
-      void (async () => {
-        try {
-          if (cancelled) return;
-          await syncAuthState(session);
-        } catch (_error) {
-          if (cancelled) return;
-          setCurrentUser(undefined);
-          setNeedsOnboarding(false);
-        }
-      })();
+    const { data } = onAuthStateChange(async (_event, session) => {
+      try {
+        if (cancelled) return;
+        await syncAuthState(session);
+      } catch (_error) {
+        if (cancelled) return;
+        setCurrentUser(undefined);
+        setNeedsOnboarding(false);
+      }
     });
 
     return () => {
@@ -224,6 +222,7 @@ export const App = () => {
     if (!currentUser) {
       setGroups([]);
       setPosts([]);
+      setGroupPosts([]);
       setGroupStatus("loading");
       setFeedStatus("loading");
       setGroupError(undefined);
@@ -239,15 +238,12 @@ export const App = () => {
       setGroupError(undefined);
       setFeedError(undefined);
 
-      const [groupResult, postResult] = await Promise.all([
-        supabaseClient
-          .from("group_memberships")
-          .select("groups(id,name,description,avatar_path)")
-          .eq("user_id", currentUser.id)
-          .eq("status", "active")
-          .order("joined_at", { ascending: false }),
-        supabaseClient.from("posts").select("id,body_text,created_at").order("created_at", { ascending: false })
-      ]);
+      const groupResult = await supabaseClient
+        .from("group_memberships")
+        .select("groups(id,name,description,avatar_path)")
+        .eq("user_id", currentUser.id)
+        .eq("status", "active")
+        .order("joined_at", { ascending: false });
 
       if (isCancelled) {
         return;
@@ -258,6 +254,7 @@ export const App = () => {
         setGroups([]);
         setGroupStatus("error");
         setGroupError(groupResult.error.message);
+        setGroupPosts([]);
       } else {
         const memberships = (groupResult.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
         const loadedGroups = memberships.flatMap((membership) =>
@@ -265,7 +262,38 @@ export const App = () => {
         );
         setGroups(loadedGroups);
         setGroupStatus(loadedGroups.length ? "ready" : "empty");
+
+        const groupIds = loadedGroups.map((group) => group.id);
+        if (!groupIds.length) {
+          setGroupPosts([]);
+        } else {
+          const groupFeedResult = await supabaseClient
+            .from("posts")
+            .select("id,body_text,created_at,status,deleted_at,is_public")
+            .in("group_id", groupIds)
+            .eq("status", "published")
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false });
+
+          if (groupFeedResult.error) {
+            console.error("[app] group feed load failed", groupFeedResult.error);
+            setGroupPosts([]);
+          } else {
+            setGroupPosts(((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
+              ...post,
+              previewText: buildPostPreviewText(post.body_text)
+            })));
+          }
+        }
       }
+
+      const postResult = await supabaseClient
+        .from("posts")
+        .select("id,body_text,created_at,status,deleted_at,is_public")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .eq("is_public", true)
+        .order("created_at", { ascending: false });
 
       if (postResult.error) {
         console.error("[app] posts load failed", postResult.error);
@@ -321,7 +349,7 @@ export const App = () => {
       });
 
     void Promise.all([
-      supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
+      supabaseClient.from("post_comments").select("id,body_text,created_at,status,deleted_at,is_public").order("created_at", { ascending: false }).limit(20),
       supabaseClient
         .from("post_reactions")
         .select("post_id,user_id,emoji,created_at")
@@ -356,23 +384,6 @@ export const App = () => {
       setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
     });
   }, [currentUser]);
-
-  const searchResults = progressUnits
-    .map((unit) => ({
-      id: unit.id,
-      title: unit.title,
-      chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null,
-      episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null
-    }))
-    .filter((item) => {
-      const needle = searchQuery.toLowerCase();
-      return (
-        !needle ||
-        item.title.toLowerCase().includes(needle) ||
-        item.chapter?.toLowerCase().includes(needle) ||
-        item.episode?.toLowerCase().includes(needle)
-      );
-    });
 
   const onSignedIn = (result: ProviderLoginResult) => {
     if (result.user.preferences?.themePreference) {
@@ -685,31 +696,27 @@ export const App = () => {
           ) : null}
 
           {mainView === "groups" ? (
-            <GroupScreen
-              groups={groups.map((group) => ({
-                id: group.id,
-                name: group.name,
-                description: group.description,
-                coverUrl: mapAvatarPathToUiValue(group.avatar_path)
-              }))}
-              status={groupStatus}
-              errorMessage={groupError}
-              theme={theme}
-              onCreateGroup={() => setShowCreateGroupSheet(true)}
-            />
+            <>
+              <GroupScreen
+                groups={groups.map((group) => ({
+                  id: group.id,
+                  name: group.name,
+                  description: group.description,
+                  coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+                }))}
+                status={groupStatus}
+                errorMessage={groupError}
+                theme={theme}
+                onCreateGroup={() => setShowCreateGroupSheet(true)}
+              />
+              <small style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</small>
+            </>
           ) : null}
 
           {mainView === "notifications" ? <NotificationsScreen theme={theme} events={notifications} /> : null}
 
           {mainView === "for-you" ? (
-            <SearchScreen
-              theme={theme}
-              query={searchQuery}
-              onQueryChange={setSearchQuery}
-              results={searchResults}
-              recent={searchResults.slice(0, 3)}
-              popular={searchResults.slice(3, 6)}
-            />
+            <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} />
           ) : null}
         </main>
 
@@ -744,6 +751,7 @@ export const App = () => {
             author_user_id: currentUser.id,
             body_text: payload.body_text,
             group_id: audience.groupId,
+            is_public: audience.isPublic,
             catalog_item_id: payload.catalog_item_id,
             progress_unit_id: payload.progress_unit_id,
             tenor_gif_id: payload.tenor_gif_id,
@@ -753,7 +761,7 @@ export const App = () => {
           const { data: inserted, error } = await supabaseClient
             .from("posts")
             .insert(postInsertPayload)
-            .select("id,body_text,created_at")
+            .select("id,body_text,created_at,status,deleted_at,is_public")
             .single();
 
           if (error || !inserted) {
