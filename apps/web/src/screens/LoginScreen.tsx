@@ -202,62 +202,66 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   }, [resendAvailableAtMs]);
 
   // Handle callback URL state (OAuth / password recovery) and auth events after redirects.
-useEffect(() => {
-  let active = true;
-
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const searchParams = new URLSearchParams(window.location.search);
-  const callbackType = hashParams.get("type") ?? searchParams.get("type");
-  const oauthCode = searchParams.get("code");
-
-  void (async () => {
-    try {
-      if (oauthCode) {
-        setStatus({ message: "Finishing Google sign-in…", tone: "info" });
-
-        const { error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
-
-        if (!active) return;
-
-        if (error) {
-          console.error("exchangeCodeForSession returned error:", {
-            message: error.message,
-            status: (error as any).status,
-            code: (error as any).code
-          });
-          setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
-          return;
+  useEffect(() => {
+    let active = true;
+  
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const searchParams = new URLSearchParams(window.location.search);
+    const callbackType = hashParams.get("type") ?? searchParams.get("type");
+    const oauthCode = searchParams.get("code");
+  
+    void (async () => {
+      try {
+        if (oauthCode) {
+          setStatus({ message: "Finishing Google sign-in…", tone: "info" });
+  
+          const { error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
+  
+          if (!active) return;
+  
+          if (error) {
+            console.error("exchangeCodeForSession returned error:", {
+              message: error.message,
+              status: (error as any).status,
+              code: (error as any).code,
+            });
+            setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
+            return;
+          }
+  
+          // Remove ?code=... after successful exchange
+          const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+          window.history.replaceState({}, document.title, cleanUrl);
         }
-
-        // Remove ?code=... after successful exchange
-        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
-        window.history.replaceState({}, document.title, cleanUrl);
+  
+        if (!active) return;
+  
+        if (callbackType === "recovery") {
+          setAuthView("email");
+          setIsPasswordResetMode(true);
+          setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
+        }
+      } catch (err) {
+        if (!active) return;
+  
+        console.error("exchangeCodeForSession threw:", err);
+  
+        const message =
+          err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
+  
+        setStatus({ message: `Unable to finish Google sign-in. ${message}`, tone: "error" });
       }
-
-      if (!active) return;
-
-      if (callbackType === "recovery") {
-        setAuthView("email");
-        setIsPasswordResetMode(true);
-        setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
-      }
-    } catch (err) {
-      if (!active) return;
-
-      console.error("exchangeCodeForSession threw:", err);
-
-      const message =
-        err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
-
-      setStatus({ message: `Unable to finish Google sign-in. ${message}`, tone: "error" });
-    }
-  })();
-
-  return () => {
-    active = false;
-  };
-}, []);
-
+    })();
+  
+    return () => {
+      active = false;
+    };
+  }, []);
+  
+  // ✅ This needs its own useEffect
+  useEffect(() => {
+    let active = true;
+  
     const { data: authListener } = onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setAuthView("email");
@@ -265,48 +269,49 @@ useEffect(() => {
         setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
         return;
       }
-
+  
       if (event === "SIGNED_IN" && session?.user) {
         onSignedIn(mapResult(session.user, session));
       }
     });
-
+  
     return () => {
       active = false;
       authListener.subscription.unsubscribe();
     };
   }, [onSignedIn]);
-
+  
   // Catch already-restored sessions after OAuth redirect / page reload.
   useEffect(() => {
     let active = true;
-
+  
     void (async () => {
       const { data, error } = await getSession();
-
+  
       if (!active) return;
-
+  
       if (error) {
         console.error("getSession after redirect failed:", error);
         return;
       }
-
+  
       if (data.session?.user) {
         onSignedIn(mapResult(data.session.user, data.session));
       }
     })();
-
+  
     return () => {
       active = false;
     };
   }, [onSignedIn]);
-
+  
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
   const otpDigits = smsCode.replace(/\D/g, "").slice(0, 6);
-  const resendCountdownSeconds = resendAvailableAtMs ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000)) : 0;
+  const resendCountdownSeconds = resendAvailableAtMs
+    ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000))
+    : 0;
   const canResendOtp = resendCountdownSeconds === 0;
-
   const handlePhoneStart = async (event: FormEvent) => {
     event.preventDefault();
 
