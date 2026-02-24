@@ -3,6 +3,7 @@ import { ActivityIndicator, SafeAreaView, StyleSheet, View, useColorScheme } fro
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
+import { mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabaseUserProfileRow } from "@nospoilers/types";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
@@ -13,12 +14,7 @@ import { getSession, onAuthStateChange, signOut } from "./src/services/authClien
 import { supabaseClient } from "./src/services/supabaseClient";
 import { AppText } from "./src/components/Typography";
 
-type GroupEntity = {
-  id: string;
-  name: string;
-  description: string | null;
-  cover_url: string | null;
-};
+type GroupEntity = SupabaseGroupRow;
 
 type GroupLoadStatus = "loading" | "ready" | "empty" | "error";
 
@@ -41,12 +37,7 @@ const mapUser = (user: User, session: Session): AuthUser => ({
 
 
 
-type ProfileRecord = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-};
+type ProfileRecord = SupabaseUserProfileRow;
 
 const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null): AuthUser => {
   if (!profile) {
@@ -60,13 +51,13 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
     username,
     usernameNormalized: username?.toLowerCase() ?? authUser.usernameNormalized,
     displayName: profile.display_name?.trim() ? profile.display_name.trim() : authUser.displayName,
-    avatarUrl: profile.avatar_url ?? authUser.avatarUrl
+    avatarUrl: mapAvatarPathToUiValue(profile.avatar_path) ?? authUser.avatarUrl
   };
 };
 
 const mapUserWithProfile = async (user: User, session: Session): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_path").eq("id", user.id).maybeSingle();
   const normalizedProfile = (profile as ProfileRecord | null) ?? null;
 
   return {
@@ -131,7 +122,7 @@ export default function App() {
 
     const loadGroups = async () => {
       setGroupStatus("loading");
-      const result = await supabaseClient.from("groups").select("id,name,description,cover_url").order("created_at", { ascending: false });
+      const result = await supabaseClient.from("groups").select("id,name,description,avatar_path").order("created_at", { ascending: false });
       if (cancelled) {
         return;
       }
@@ -207,7 +198,7 @@ export default function App() {
               />
             ) : (
               <GroupScreen
-                group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: groups[0].cover_url } : undefined}
+                group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: mapAvatarPathToUiValue(groups[0].avatar_path) } : undefined}
                 status={groupStatus}
                 errorMessage={groupError}
                 theme={theme}
