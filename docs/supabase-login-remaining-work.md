@@ -35,7 +35,6 @@ Follow this sequence for each environment (`dev`, `stage`, `prod`):
      - Enable Email provider (email/password sign-in).
      - Enable Phone provider and configure Twilio SMS.
      - Enable Google provider with OAuth client ID/secret.
-     - Keep Apple disabled unless intentionally adding Apple login.
 
 6. **Configure callback and redirect URLs in Supabase**
    - In Authentication URL settings:
