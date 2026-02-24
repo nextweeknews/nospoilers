@@ -7,6 +7,10 @@ import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
+import { SearchScreen } from "./screens/SearchScreen";
+import { NotificationsScreen } from "./screens/NotificationsScreen";
+import { ProfileTabScreen } from "./screens/ProfileTabScreen";
+import { PostComposerSheet } from "./components/PostComposerSheet";
 import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
 import { profileNeedsOnboarding } from "./profileOnboarding";
@@ -22,6 +26,7 @@ type GroupEntity = SupabaseGroupRow;
 type PostEntity = SupabasePostRow & {
   previewText: string | null;
 };
+type OptionRow = { id: string; title: string };
 
 const getSystemMode = (): ThemeMode => {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -100,6 +105,11 @@ export const App = () => {
   const [authStatus, setAuthStatus] = useState<string>();
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [catalogItems, setCatalogItems] = useState<OptionRow[]>([]);
+  const [progressUnits, setProgressUnits] = useState<OptionRow[]>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -227,6 +237,31 @@ export const App = () => {
     };
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    void supabaseClient.from("catalog_items").select("id,title").limit(20).then(({ data }) => setCatalogItems((data as OptionRow[] | null) ?? []));
+    void supabaseClient.from("progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as OptionRow[] | null) ?? []));
+
+    void Promise.all([
+      supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
+      supabaseClient.from("post_reactions").select("id,reaction,created_at").order("created_at", { ascending: false }).limit(20)
+    ]).then(([comments, reactions]) => {
+      const commentEvents = ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `comment-${entry.id}`, type: "Comment", createdAt: entry.created_at, text: entry.body_text ?? "New comment" }));
+      const reactionEvents = ((reactions.data as Array<{ id: string; reaction: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `reaction-${entry.id}`, type: "Reaction", createdAt: entry.created_at, text: entry.reaction ?? "New reaction" }));
+      setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+    });
+  }, [currentUser]);
+
+  const searchResults = progressUnits
+    .map((unit) => ({ id: unit.id, title: unit.title, chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null, episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null }))
+    .filter((item) => {
+      const needle = searchQuery.toLowerCase();
+      return !needle || item.title.toLowerCase().includes(needle) || item.chapter?.toLowerCase().includes(needle) || item.episode?.toLowerCase().includes(needle);
+    });
+
   const onSignedIn = (result: ProviderLoginResult) => {
     if (result.user.preferences?.themePreference) {
       setThemePreference(result.user.preferences.themePreference);
@@ -342,6 +377,7 @@ export const App = () => {
 
         <main style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.md, background: theme.colors.background }}>
           {mainView === "profile" ? (
+            showProfileSettings ? (
             <ProfileSettingsScreen
               user={currentUser}
               onProfileUpdated={setCurrentUser}
@@ -355,6 +391,9 @@ export const App = () => {
               themePreference={themePreference}
               theme={theme}
             />
+            ) : (
+              <ProfileTabScreen theme={theme} user={currentUser} onEditProfile={() => setShowProfileSettings(true)} onAccountSettings={() => setShowProfileSettings(true)} />
+            )
           ) : null}
 
           {mainView === "groups" ? (
@@ -372,45 +411,46 @@ export const App = () => {
             />
           ) : null}
 
-          {mainView === "notifications" ? (
-            <article style={feedCard(theme)}>
-              <p style={{ margin: 0, color: theme.colors.textSecondary }}>You are all caught up. Notifications will appear here soon.</p>
-            </article>
-          ) : null}
+          {mainView === "notifications" ? <NotificationsScreen theme={theme} events={notifications} /> : null}
 
-          {mainView === "for-you" ? (
-            feedStatus === "loading" ? (
-              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>Loading feed posts from Supabase…</p></article>
-            ) : feedStatus === "error" ? (
-              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>Unable to load feed from backend: {feedError}</p></article>
-            ) : feedStatus === "empty" ? (
-              <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>No real feed posts are available for this account yet.</p></article>
-            ) : (
-              posts.map((post) => (
-                <article key={post.id} style={feedCard(theme)}>
-                  <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Post {post.id.slice(0, 8)}</h3>
-                  <p style={{ margin: 0, color: theme.colors.textSecondary }}>{post.previewText ?? "(No preview text provided.)"}</p>
-                  <small style={{ color: theme.colors.accentStrong, fontWeight: 600 }}>{new Date(post.created_at).toLocaleString()}</small>
-                </article>
-              ))
-            )
-          ) : null}
+          {mainView === "for-you" ? <SearchScreen theme={theme} query={searchQuery} onQueryChange={setSearchQuery} results={searchResults} recent={searchResults.slice(0, 3)} popular={searchResults.slice(3, 6)} /> : null}
         </main>
 
         <BottomNav activeTab={mainView} onSelect={(view) => { setMainView(view); setMenuOpen(false); }} theme={theme} />
       </div>
 
-      {showCreatePostSheet ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>
-          <div style={{ width: "min(430px, 100%)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.md, display: "grid", gap: spacingTokens.sm }}>
-            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create post</h3>
-            <p style={{ margin: 0, color: theme.colors.textSecondary }}>This placeholder sheet confirms the create-post flow is wired. Composer UI is coming next.</p>
-            <button type="button" onClick={() => setShowCreatePostSheet(false)} style={{ border: "none", borderRadius: radiusTokens.md, padding: "10px 14px", background: theme.colors.accent, color: theme.colors.accentText, fontWeight: 700, cursor: "pointer" }}>
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <PostComposerSheet
+        open={showCreatePostSheet}
+        theme={theme}
+        groups={groups.map((group) => ({ id: group.id, label: group.name }))}
+        catalogItems={catalogItems.map((entry) => ({ id: entry.id, label: entry.title }))}
+        progressUnits={progressUnits.map((entry) => ({ id: entry.id, label: entry.title }))}
+        onClose={() => setShowCreatePostSheet(false)}
+        onSubmit={async (payload) => {
+          if (!currentUser) {
+            return;
+          }
+
+          const { data: inserted, error } = await supabaseClient.from("posts").insert({
+            author_id: currentUser.id,
+            body_text: payload.body_text,
+            public: payload.public,
+            group_id: payload.group_id,
+            catalog_item_id: payload.catalog_item_id,
+            progress_unit_id: payload.progress_unit_id,
+            tenor_gif_id: payload.tenor_gif_id,
+            tenor_gif_url: payload.tenor_gif_url
+          }).select("id,body_text,created_at").single();
+          if (error || !inserted) {
+            return;
+          }
+
+          if (payload.attachments.length) {
+            await supabaseClient.from("post_attachments").insert(payload.attachments.map((attachment) => ({ post_id: inserted.id, media_url: attachment.url, media_kind: attachment.kind, bytes: attachment.bytes })));
+          }
+          setPosts((prev) => [{ ...(inserted as SupabasePostRow), previewText: buildPostPreviewText(inserted.body_text) }, ...prev]);
+        }}
+      />
 
       {showCreateGroupSheet ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>

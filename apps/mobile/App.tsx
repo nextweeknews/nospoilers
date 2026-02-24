@@ -8,6 +8,10 @@ import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
+import { SearchScreen } from "./src/screens/SearchScreen";
+import { NotificationsScreen } from "./src/screens/NotificationsScreen";
+import { ProfileTabScreen } from "./src/screens/ProfileTabScreen";
+import { PostComposerModal } from "./src/components/PostComposerModal";
 import { OnboardingProfileScreen } from "./src/screens/OnboardingProfileScreen";
 import { mobileConfig } from "./src/config/env";
 import { getSession, onAuthStateChange, signOut } from "./src/services/authClient";
@@ -78,6 +82,11 @@ export default function App() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [catalogItems, setCatalogItems] = useState<Array<{ id: string; title: string }>>([]);
+  const [progressUnits, setProgressUnits] = useState<Array<{ id: string; title: string }>>([]);
+  const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const colorScheme = useColorScheme();
   const theme = createTheme(resolveThemePreference(colorScheme === "dark" ? "dark" : "light", themePreference));
 
@@ -158,6 +167,32 @@ export default function App() {
     };
   }, [currentUser]);
 
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    void supabaseClient.from("catalog_items").select("id,title").limit(20).then(({ data }) => setCatalogItems((data as Array<{ id: string; title: string }> | null) ?? []));
+    void supabaseClient.from("progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as Array<{ id: string; title: string }> | null) ?? []));
+
+    void Promise.all([
+      supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
+      supabaseClient.from("post_reactions").select("id,reaction,created_at").order("created_at", { ascending: false }).limit(20)
+    ]).then(([comments, reactions]) => {
+      const commentEvents = ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `comment-${entry.id}`, type: "Comment", createdAt: entry.created_at, text: entry.body_text ?? "New comment" }));
+      const reactionEvents = ((reactions.data as Array<{ id: string; reaction: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `reaction-${entry.id}`, type: "Reaction", createdAt: entry.created_at, text: entry.reaction ?? "New reaction" }));
+      setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
+    });
+  }, [currentUser]);
+
+  const searchResults = progressUnits
+    .map((unit) => ({ id: unit.id, title: unit.title, chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null, episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null }))
+    .filter((item) => {
+      const needle = searchQuery.toLowerCase();
+      return !needle || item.title.toLowerCase().includes(needle) || item.chapter?.toLowerCase().includes(needle) || item.episode?.toLowerCase().includes(needle);
+    });
+
   const onSignedIn = (result: ProviderLoginResult) => {
     setThemePreference(result.user.preferences?.themePreference ?? "system");
   };
@@ -206,6 +241,7 @@ export default function App() {
               </Pressable>
             </View>
             {activeTab === "profile" ? (
+              showProfileSettings ? (
               <ProfileSettingsScreen
                 user={currentUser}
                 onProfileUpdated={setCurrentUser}
@@ -218,6 +254,9 @@ export default function App() {
                 themePreference={themePreference}
                 onThemePreferenceChanged={setThemePreference}
               />
+              ) : (
+                <ProfileTabScreen theme={theme} user={currentUser} onEditProfile={() => setShowProfileSettings(true)} onAccountSettings={() => setShowProfileSettings(true)} />
+              )
             ) : activeTab === "groups" ? (
               <GroupScreen
                 groups={groups.map((group) => ({
@@ -231,17 +270,10 @@ export default function App() {
                 onCreateGroup={() => setShowCreateGroupSheet(true)}
                 theme={theme}
               />
+            ) : activeTab === "for-you" ? (
+              <SearchScreen theme={theme} query={searchQuery} onQueryChange={setSearchQuery} results={searchResults} recent={searchResults.slice(0, 3)} popular={searchResults.slice(3, 6)} />
             ) : (
-              <View style={[styles.placeholderCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <AppText style={[styles.placeholderTitle, { color: theme.colors.textPrimary }]}>
-                  {activeTab === "for-you" ? "For You" : "Notifications"}
-                </AppText>
-                <AppText style={{ color: theme.colors.textSecondary }}>
-                  {activeTab === "for-you"
-                    ? "Your personalized feed will appear here soon."
-                    : "You are all caught up. Notifications will appear here soon."}
-                </AppText>
-              </View>
+              <NotificationsScreen theme={theme} events={notifications} />
             )}
             <BottomTabs activeTab={activeTab} onSelect={setActiveTab} theme={theme} />
             <Modal visible={showCreateGroupSheet} transparent animationType="slide" onRequestClose={() => setShowCreateGroupSheet(false)}>
@@ -255,17 +287,36 @@ export default function App() {
                 </View>
               </View>
             </Modal>
-            <Modal visible={showCreatePostSheet} transparent animationType="slide" onRequestClose={() => setShowCreatePostSheet(false)}>
-              <View style={styles.modalBackdrop}>
-                <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <AppText style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Create post</AppText>
-                  <AppText style={[styles.modalBody, { color: theme.colors.textSecondary }]}>This placeholder sheet confirms the create-post flow is wired. Composer UI is coming next.</AppText>
-                  <Pressable onPress={() => setShowCreatePostSheet(false)} style={[styles.modalButton, { backgroundColor: theme.colors.accent }]}>
-                    <AppText style={{ color: theme.colors.accentText, fontWeight: "700" }}>Close</AppText>
-                  </Pressable>
-                </View>
-              </View>
-            </Modal>
+            <PostComposerModal
+              visible={showCreatePostSheet}
+              theme={theme}
+              groups={groups.map((group) => ({ id: group.id, label: group.name }))}
+              catalogItems={catalogItems.map((entry) => ({ id: entry.id, label: entry.title }))}
+              progressUnits={progressUnits.map((entry) => ({ id: entry.id, label: entry.title }))}
+              onClose={() => setShowCreatePostSheet(false)}
+              onSubmit={async (payload) => {
+                if (!currentUser) {
+                  return;
+                }
+
+                const { data: inserted, error } = await supabaseClient.from("posts").insert({
+                  author_id: currentUser.id,
+                  body_text: payload.body_text,
+                  public: payload.public,
+                  group_id: payload.group_id,
+                  catalog_item_id: payload.catalog_item_id,
+                  progress_unit_id: payload.progress_unit_id,
+                  tenor_gif_id: payload.tenor_gif_id,
+                  tenor_gif_url: payload.tenor_gif_url
+                }).select("id").single();
+
+                if (error || !inserted || !payload.attachments.length) {
+                  return;
+                }
+
+                await supabaseClient.from("post_attachments").insert(payload.attachments.map((attachment) => ({ post_id: inserted.id, media_url: attachment.url, media_kind: attachment.kind, bytes: attachment.bytes })));
+              }}
+            />
           </>
         )}
       </View>
