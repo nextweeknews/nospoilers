@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
+import { buildPostPreviewText, mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabasePostRow, type SupabaseUserProfileRow } from "@nospoilers/types";
 import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
@@ -14,17 +15,10 @@ const THEME_KEY = "nospoilers:web:theme-preference";
 type MainView = "feed" | "groups" | "account";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
-type GroupEntity = {
-  id: string;
-  name: string;
-  description: string | null;
-  cover_url: string | null;
-};
+type GroupEntity = SupabaseGroupRow;
 
-type PostEntity = {
-  id: string;
-  preview_text: string | null;
-  created_at: string;
+type PostEntity = SupabasePostRow & {
+  previewText: string | null;
 };
 
 const getSystemMode = (): ThemeMode => {
@@ -55,12 +49,7 @@ const mapUser = (user: User, session: Session): AuthUser => ({
   preferences: { themePreference: session.user.user_metadata.theme_preference as ThemePreference | undefined }
 });
 
-type ProfileRecord = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-};
+type ProfileRecord = SupabaseUserProfileRow;
 
 const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null): AuthUser => {
   if (!profile) {
@@ -74,13 +63,13 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
     username,
     usernameNormalized: username?.toLowerCase() ?? authUser.usernameNormalized,
     displayName: profile.display_name?.trim() ? profile.display_name.trim() : authUser.displayName,
-    avatarUrl: profile.avatar_url ?? authUser.avatarUrl
+    avatarUrl: mapAvatarPathToUiValue(profile.avatar_path) ?? authUser.avatarUrl
   };
 };
 
 const mapUserWithProfile = async (user: User, session: Session): Promise<{ user: AuthUser; needsOnboarding: boolean }> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("users").select("id,username,display_name,avatar_path").eq("id", user.id).maybeSingle();
   const normalizedProfile = (profile as ProfileRecord | null) ?? null;
 
   return {
@@ -187,8 +176,8 @@ export const App = () => {
       setFeedError(undefined);
 
       const [groupResult, postResult] = await Promise.all([
-        supabaseClient.from("groups").select("id,name,description,cover_url").order("created_at", { ascending: false }),
-        supabaseClient.from("posts").select("id,preview_text,created_at").order("created_at", { ascending: false })
+        supabaseClient.from("groups").select("id,name,description,avatar_path").order("created_at", { ascending: false }),
+        supabaseClient.from("posts").select("id,body_text,created_at").order("created_at", { ascending: false })
       ]);
 
       if (isCancelled) {
@@ -210,7 +199,10 @@ export const App = () => {
         setFeedStatus("error");
         setFeedError(postResult.error.message);
       } else {
-        const loadedPosts = (postResult.data as PostEntity[] | null) ?? [];
+        const loadedPosts = ((postResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
+          ...post,
+          previewText: buildPostPreviewText(post.body_text)
+        }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
       }
@@ -380,7 +372,7 @@ export const App = () => {
 
           {mainView === "groups" ? (
             <GroupScreen
-              group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: groups[0].cover_url } : undefined}
+              group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: mapAvatarPathToUiValue(groups[0].avatar_path) } : undefined}
               status={groupStatus}
               errorMessage={groupError}
               theme={theme}
@@ -398,7 +390,7 @@ export const App = () => {
               posts.map((post) => (
                 <article key={post.id} style={feedCard(theme)}>
                   <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Post {post.id.slice(0, 8)}</h3>
-                  <p style={{ margin: 0, color: theme.colors.textSecondary }}>{post.preview_text ?? "(No preview text provided.)"}</p>
+                  <p style={{ margin: 0, color: theme.colors.textSecondary }}>{post.previewText ?? "(No preview text provided.)"}</p>
                   <small style={{ color: theme.colors.accentStrong, fontWeight: 600 }}>{new Date(post.created_at).toLocaleString()}</small>
                 </article>
               ))

@@ -150,7 +150,7 @@ export const OnboardingProfileScreen = ({
         username: nextUsername,
         display_name: skipOptional ? nextUsername : nextDisplayName || nextUsername,
         email: user.email ?? null,
-        avatar_url: updatedUser.avatarUrl ?? null,
+        avatar_path: updatedUser.avatarUrl ?? null,
         updated_at: new Date().toISOString()
       };
 
