@@ -254,7 +254,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                   <input
                     value={formattedPhone}
                     onChange={(event) => setFormattedPhone(formatPhoneNumber(event.target.value))}
-                    placeholder="(___) ___-____"
+                    placeholder=""
                     inputMode="numeric"
                     autoComplete="tel-national"
                     maxLength={14}

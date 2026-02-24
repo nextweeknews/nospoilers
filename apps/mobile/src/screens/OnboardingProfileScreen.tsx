@@ -43,32 +43,29 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     }
 
 
-    const timeout = setTimeout(() => {
-      void (async () => {
-        const [availability, dbResult] = await Promise.all([
-          authService.checkUsernameAvailability(normalized),
-          supabaseClient.from("profiles").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
-        ]);
+    void (async () => {
+      const [availability, dbResult] = await Promise.all([
+        authService.checkUsernameAvailability(normalized),
+        supabaseClient.from("profiles").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
+      ]);
 
-        if (!active) {
-          return;
-        }
+      if (!active) {
+        return;
+      }
 
-        const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
-        const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
+      const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
+      const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
 
-        if (unavailableInAuth || takenInDb) {
-          setUsernameFeedback({ tone: "error", message: "This username is not available." });
-          return;
-        }
+      if (unavailableInAuth || takenInDb) {
+        setUsernameFeedback({ tone: "error", message: "This username is not available." });
+        return;
+      }
 
-        setUsernameFeedback({ tone: "success", message: "This username is available." });
-      })();
-    }, 250);
+      setUsernameFeedback({ tone: "success", message: "This username is available." });
+    })();
 
     return () => {
       active = false;
-      clearTimeout(timeout);
     };
   }, [username, user.id, user.usernameNormalized]);
 
