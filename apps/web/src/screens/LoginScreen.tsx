@@ -13,6 +13,7 @@ import {
   updateCurrentUserPassword,
   verifySmsOtp
 } from "../services/authClient";
+import { supabaseClient } from "../services/supabaseClient";
 
 type CountryOption = {
   code: string;
@@ -202,19 +203,37 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   // Handle callback URL state (OAuth / password recovery) and auth events after redirects.
   useEffect(() => {
+    let active = true;
+
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const searchParams = new URLSearchParams(window.location.search);
     const callbackType = hashParams.get("type") ?? searchParams.get("type");
+    const hasOAuthCode = searchParams.has("code");
 
-    if (searchParams.has("code")) {
-      setStatus({ message: "Finishing Google sign-in…", tone: "info" });
-    }
+    void (async () => {
+      if (hasOAuthCode) {
+        setStatus({ message: "Finishing Google sign-in…", tone: "info" });
 
-    if (callbackType === "recovery") {
-      setAuthView("email");
-      setIsPasswordResetMode(true);
-      setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
-    }
+        const { error } = await supabaseClient.auth.exchangeCodeForSession(window.location.href);
+
+        if (!active) return;
+
+        if (error) {
+          console.error("exchangeCodeForSession failed:", error);
+          setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
+          return;
+        }
+
+        const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+
+      if (callbackType === "recovery") {
+        setAuthView("email");
+        setIsPasswordResetMode(true);
+        setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
+      }
+    })();
 
     const { data: authListener } = onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -230,6 +249,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     });
 
     return () => {
+      active = false;
       authListener.subscription.unsubscribe();
     };
   }, [onSignedIn]);
