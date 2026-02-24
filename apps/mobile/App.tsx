@@ -7,6 +7,7 @@ import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
+import { OnboardingProfileScreen } from "./src/screens/OnboardingProfileScreen";
 import { mobileConfig } from "./src/config/env";
 import { supabaseClient } from "./src/services/supabaseClient";
 
@@ -18,6 +19,8 @@ type GroupEntity = {
 };
 
 type GroupLoadStatus = "loading" | "ready" | "empty" | "error";
+
+const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -123,6 +126,8 @@ export default function App() {
         </Text>
         {!authResolved || !currentUser ? (
           <LoginScreen onSignedIn={onSignedIn} theme={theme} />
+        ) : !hasCompleteProfile(currentUser) ? (
+          <OnboardingProfileScreen user={currentUser} theme={theme} onProfileCompleted={setCurrentUser} />
         ) : (
           <>
             {activeTab === "account" ? (
