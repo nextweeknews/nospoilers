@@ -25,6 +25,25 @@ Override variables per platform:
 - `EXPO_PUBLIC_API_URL`
 - `EXPO_PUBLIC_AUTH_CLIENT_ID`
 
+## GitHub Codespaces dev preview troubleshooting
+
+If the built-in Codespaces preview appears blank, stale, or disconnected:
+
+1. Ensure the web app is running on `0.0.0.0:5173`:
+   - `npm run dev --workspace apps/web -- --host 0.0.0.0 --port 5173`
+2. Confirm port `5173` is forwarded and visible in the **Ports** panel (this repo preconfigures it in `.devcontainer/devcontainer.json`).
+3. In **Ports**, set port `5173` visibility to **Private** and open it in browser; if preview fails, open the forwarded URL directly in a new tab.
+4. Rebuild the container from the Codespaces Command Palette:
+   - **Codespaces: Rebuild Container**
+5. If dependencies look stale/corrupt, reinstall from repo root:
+   - `npm ci`
+6. If preview still fails, stop all dev servers, refresh the Codespace browser tab, and restart the Vite server.
+
+Notes specific to this repo:
+
+- `.devcontainer/devcontainer.json` already forwards ports `5173`, `3000`, and `3001`.
+- Port `5173` is configured with `onAutoForward: "openPreview"`, so a healthy web dev server should auto-open preview.
+
 ## Supabase Authentication dashboard alignment
 
 Apply these Supabase Dashboard settings per environment (`dev`, `stage`, `prod`) under **Authentication**:
