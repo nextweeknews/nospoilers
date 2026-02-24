@@ -96,56 +96,106 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
   const submitProfile = async (skipOptional: boolean) => {
     const nextDisplayName = displayName.trim();
     const nextUsername = normalizeUsername(username);
-
+  
     if (!nextUsername) {
       setFieldErrors((prev) => ({ ...prev, username: "Username is required." }));
       return;
     }
-
-    const validation = validateUsername(nextUsername);
-    if (validation.tone === "error") {
-      setFieldErrors((prev) => ({ ...prev, username: validation.message }));
+  
+    const usernameValidation = validateUsername(nextUsername);
+    if (usernameValidation.tone === "error") {
+      setFieldErrors((prev) => ({ ...prev, username: usernameValidation.message }));
       return;
     }
-
+  
     setSaving(true);
-    setFieldErrors((prev) => ({ ...prev, general: undefined }));
-
+    setFieldErrors((prev) => ({ ...prev, general: undefined, username: undefined }));
+  
     try {
+      console.log("[onboarding] submit start", {
+        userId: user.id,
+        nextUsername,
+        skipOptional
+      });
+  
+      // Optional but very helpful: verify session is present during onboarding save.
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      console.log("[onboarding] session check", {
+        hasSession: Boolean(sessionData.session),
+        authUid: sessionData.session?.user?.id,
+        formUserId: user.id,
+        sessionError: sessionError?.message ?? null
+      });
+  
       const availability = await checkUsernameAvailability(nextUsername);
+      console.log("[onboarding] availability", availability);
+  
       if (availability.error) {
         setFieldErrors((prev) => ({ ...prev, general: "Could not check username right now." }));
         return;
       }
-
-      if (!availability.available && nextUsername !== user.usernameNormalized) {
+  
+      const isCurrentUsersUsername = nextUsername === (user.usernameNormalized ?? "");
+      if (!availability.available && !isCurrentUsersUsername) {
         setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
         return;
       }
-
-      if (availability.available) {
+  
+      // Reserve only if truly available and changing username.
+      if (availability.available && !isCurrentUsersUsername) {
+        console.log("[onboarding] reserveUsername");
         await authService.reserveUsername(nextUsername, user.id);
       }
-
-      const updatedUser = await authService.updateProfile(user.id, {
+  
+      console.log("[onboarding] updateProfile");
+      let updatedUser = await authService.updateProfile(user.id, {
         displayName: skipOptional ? nextUsername : nextDisplayName || nextUsername,
         username: nextUsername
       });
-
+      console.log("[onboarding] updateProfile ok", updatedUser);
+  
+      // If avatar upload is part of this step, do it BEFORE writing the final public.users row,
+      // so avatar_path is included in the same upsert.
+      if (!skipOptional && avatarFileName && isBlank(updatedUser.avatarUrl)) {
+        console.log("[onboarding] createAvatarUploadPlan");
+        const upload = await authService.createAvatarUploadPlan(user.id, {
+          fileName: avatarFileName,
+          contentType: "image/png",
+          bytes: 220_000,
+          width: 512,
+          height: 512
+        });
+  
+        console.log("[onboarding] finalizeAvatarUpload");
+        updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
+          contentType: "image/png",
+          bytes: 220_000,
+          width: 512,
+          height: 512
+        });
+  
+        console.log("[onboarding] avatar finalized", updatedUser.avatarUrl);
+      }
+  
+      // Build payload AFTER all profile/avatar updates, so the DB row gets final values.
+      const finalDisplayName = skipOptional ? nextUsername : nextDisplayName || nextUsername;
       const profilePayload = {
         id: user.id,
         username: nextUsername,
-        display_name: skipOptional ? nextUsername : nextDisplayName || nextUsername,
+        display_name: finalDisplayName,
         email: user.email ?? null,
         avatar_path: updatedUser.avatarUrl ?? null,
         updated_at: new Date().toISOString()
       };
-
+  
+      console.log("[onboarding] upsert public.users", profilePayload);
       const { error: userUpsertError } = await supabaseClient
         .from("users")
         .upsert(profilePayload, { onConflict: "id" });
-      
+  
       if (userUpsertError) {
+        console.error("[onboarding] upsert error", userUpsertError);
+  
         if (userUpsertError.code === "23505") {
           setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
         } else {
@@ -153,7 +203,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
         }
         return;
       }
-
+  
       const completedUser: AuthUser = updatedUser.username
         ? updatedUser
         : {
@@ -161,9 +211,14 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
             username: nextUsername,
             usernameNormalized: nextUsername
           };
-
-      setStatus("Profile complete. Entering app…");
+  
+      console.log("[onboarding] complete -> onProfileCompleted", completedUser);
+      setStatus("Profile complete. Redirecting to the app…");
       onProfileCompleted(completedUser);
+    } catch (error) {
+      console.error("[onboarding] submitProfile failed", error);
+      const message = error instanceof Error ? error.message : "Could not complete onboarding.";
+      setFieldErrors((prev) => ({ ...prev, general: message }));
     } finally {
       setSaving(false);
     }
