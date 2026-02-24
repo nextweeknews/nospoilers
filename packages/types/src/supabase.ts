@@ -18,6 +18,9 @@ export type SupabasePostRow = {
   id: string;
   body_text: string | null;
   created_at: string;
+  status: string;
+  deleted_at: string | null;
+  is_public: boolean;
 };
 
 export type PostAudienceSelection = {
@@ -50,6 +53,7 @@ export type SupabasePostInsert = {
   author_user_id: string;
   body_text: string;
   group_id: string | null;
+  is_public: boolean;
   catalog_item_id: string | null;
   progress_unit_id: string | null;
   tenor_gif_id: string | null;

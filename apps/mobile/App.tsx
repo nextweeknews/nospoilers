@@ -4,11 +4,13 @@ import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
 import {
+  buildPostPreviewText,
   mapAvatarPathToUiValue,
   resolveSingleGroupAudience,
   type SupabaseCatalogProgressUnitRow,
   type SupabaseGroupRow,
   type SupabasePostAttachmentInsert,
+  type SupabasePostRow,
   type SupabasePostInsert,
   type SupabasePostReactionRow,
   type SupabaseUserProfileRow
@@ -17,7 +19,7 @@ import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
-import { SearchScreen } from "./src/screens/SearchScreen";
+import { PublicFeedScreen } from "./src/screens/PublicFeedScreen";
 import { NotificationsScreen } from "./src/screens/NotificationsScreen";
 import { ProfileTabScreen } from "./src/screens/ProfileTabScreen";
 import { PostComposerModal } from "./src/components/PostComposerModal";
@@ -87,6 +89,10 @@ export default function App() {
   const [groupStatus, setGroupStatus] = useState<GroupLoadStatus>("loading");
   const [groupError, setGroupError] = useState<string>();
   const [groups, setGroups] = useState<GroupEntity[]>([]);
+  const [posts, setPosts] = useState<Array<SupabasePostRow & { previewText: string | null }>>([]);
+  const [groupPosts, setGroupPosts] = useState<Array<SupabasePostRow & { previewText: string | null }>>([]);
+  const [feedStatus, setFeedStatus] = useState<GroupLoadStatus>("loading");
+  const [feedError, setFeedError] = useState<string>();
   const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
@@ -96,7 +102,6 @@ export default function App() {
   const [createGroupError, setCreateGroupError] = useState<string>();
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [catalogItems, setCatalogItems] = useState<Array<{ id: string; title: string }>>([]);
   const [progressUnits, setProgressUnits] = useState<Array<{ id: string; title: string }>>([]);
   const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
@@ -140,15 +145,20 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) {
       setGroups([]);
+      setPosts([]);
+      setGroupPosts([]);
       setGroupStatus("loading");
+      setFeedStatus("loading");
       setGroupError(undefined);
+      setFeedError(undefined);
       return;
     }
 
     let cancelled = false;
 
-    const loadGroups = async () => {
+    const loadData = async () => {
       setGroupStatus("loading");
+      setFeedStatus("loading");
       const result = await supabaseClient
         .from("group_memberships")
         .select("groups(id,name,description,avatar_path)")
@@ -161,20 +171,64 @@ export default function App() {
 
       if (result.error) {
         setGroups([]);
+        setGroupPosts([]);
         setGroupStatus("error");
         setGroupError(result.error.message);
-        return;
+      } else {
+        const memberships = (result.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
+        const loaded = memberships
+          .flatMap((membership) => (Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []));
+        setGroups(loaded);
+        setGroupStatus(loaded.length ? "ready" : "empty");
+        setGroupError(undefined);
+
+        const groupIds = loaded.map((group) => group.id);
+        if (!groupIds.length) {
+          setGroupPosts([]);
+        } else {
+          const groupFeedResult = await supabaseClient
+            .from("posts")
+            .select("id,body_text,created_at,status,deleted_at,is_public")
+            .in("group_id", groupIds)
+            .eq("status", "published")
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false });
+
+          if (groupFeedResult.error) {
+            setGroupPosts([]);
+          } else {
+            setGroupPosts(((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
+              ...post,
+              previewText: buildPostPreviewText(post.body_text)
+            })));
+          }
+        }
       }
 
-      const memberships = (result.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
-      const loaded = memberships
-        .flatMap((membership) => (Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []));
-      setGroups(loaded);
-      setGroupStatus(loaded.length ? "ready" : "empty");
-      setGroupError(undefined);
+      const publicFeedResult = await supabaseClient
+        .from("posts")
+        .select("id,body_text,created_at,status,deleted_at,is_public")
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .eq("is_public", true)
+        .order("created_at", { ascending: false });
+
+      if (publicFeedResult.error) {
+        setPosts([]);
+        setFeedStatus("error");
+        setFeedError(publicFeedResult.error.message);
+      } else {
+        const loaded = ((publicFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
+          ...post,
+          previewText: buildPostPreviewText(post.body_text)
+        }));
+        setPosts(loaded);
+        setFeedStatus(loaded.length ? "ready" : "empty");
+        setFeedError(undefined);
+      }
     };
 
-    void loadGroups();
+    void loadData();
 
     return () => {
       cancelled = true;
@@ -199,13 +253,6 @@ export default function App() {
       setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
     });
   }, [currentUser]);
-
-  const searchResults = progressUnits
-    .map((unit) => ({ id: unit.id, title: unit.title, chapter: unit.title.match(/chapter\s*\d+/i)?.[0] ?? null, episode: unit.title.match(/episode\s*\d+/i)?.[0] ?? null }))
-    .filter((item) => {
-      const needle = searchQuery.toLowerCase();
-      return !needle || item.title.toLowerCase().includes(needle) || item.chapter?.toLowerCase().includes(needle) || item.episode?.toLowerCase().includes(needle);
-    });
 
   const onSignedIn = (result: ProviderLoginResult) => {
     setThemePreference(result.user.preferences?.themePreference ?? "system");
@@ -337,6 +384,7 @@ export default function App() {
                 <ProfileTabScreen theme={theme} user={currentUser} onEditProfile={() => setShowProfileSettings(true)} onAccountSettings={() => setShowProfileSettings(true)} />
               )
             ) : activeTab === "groups" ? (
+              <>
               <GroupScreen
                 groups={groups.map((group) => ({
                   id: group.id,
@@ -349,8 +397,10 @@ export default function App() {
                 onCreateGroup={() => setShowCreateGroupSheet(true)}
                 theme={theme}
               />
+              <AppText style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</AppText>
+              </>
             ) : activeTab === "for-you" ? (
-              <SearchScreen theme={theme} query={searchQuery} onQueryChange={setSearchQuery} results={searchResults} recent={searchResults.slice(0, 3)} popular={searchResults.slice(3, 6)} />
+              <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} />
             ) : (
               <NotificationsScreen theme={theme} events={notifications} />
             )}
@@ -426,13 +476,14 @@ export default function App() {
 
                 const audience = resolveSingleGroupAudience({
                   groupId: payload.group_id,
-                  isPublic: true
+                  isPublic: payload.public
                 });
 
                 const postInsert: SupabasePostInsert = {
                   author_user_id: currentUser.id,
                   body_text: payload.body_text,
                   group_id: audience.groupId,
+                  is_public: audience.isPublic,
                   catalog_item_id: payload.catalog_item_id,
                   progress_unit_id: payload.progress_unit_id,
                   tenor_gif_id: payload.tenor_gif_id,
