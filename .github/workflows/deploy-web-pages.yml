@@ -17,8 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Uses Supabase secrets from Settings → Environments → dev
-    environment: dev
+    environment: github-pages
     steps:
       - name: Checkout
         uses: actions/checkout@v4
