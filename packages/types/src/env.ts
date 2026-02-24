@@ -1,5 +1,8 @@
 export type AppEnvironment = "dev" | "stage" | "prod";
 
+const SUPABASE_URL = "https://zwnacudkxhyekcleqoun.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_BrK-zYWpEfZZlClVi3tAZA_jh-_0WKP";
+
 export type EnvironmentConfig = {
   apiBaseUrl: string;
   authClientId: string;
@@ -13,20 +16,20 @@ export const ENVIRONMENT_CONFIGS: Record<AppEnvironment, EnvironmentConfig> = {
   dev: {
     apiBaseUrl: "https://api-dev.nospoilers.app",
     authClientId: "nospoilers-dev-client",
-    supabaseUrl: "",
-    supabaseAnonKey: ""
+    supabaseUrl: SUPABASE_URL,
+    supabaseAnonKey: SUPABASE_ANON_KEY
   },
   stage: {
     apiBaseUrl: "https://api-stage.nospoilers.app",
     authClientId: "nospoilers-stage-client",
-    supabaseUrl: "",
-    supabaseAnonKey: ""
+    supabaseUrl: SUPABASE_URL,
+    supabaseAnonKey: SUPABASE_ANON_KEY
   },
   prod: {
     apiBaseUrl: "https://api.nospoilers.app",
     authClientId: "nospoilers-prod-client",
-    supabaseUrl: "",
-    supabaseAnonKey: ""
+    supabaseUrl: SUPABASE_URL,
+    supabaseAnonKey: SUPABASE_ANON_KEY
   }
 };
 
