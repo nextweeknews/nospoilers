@@ -20,6 +20,19 @@ export type SupabasePostRow = {
   created_at: string;
 };
 
+export type PostAudienceSelection = {
+  groupId: string | null;
+  isPublic: boolean;
+};
+
+export const resolveSingleGroupAudience = ({ groupId, isPublic }: PostAudienceSelection): PostAudienceSelection => {
+  if (!groupId) {
+    return { groupId: null, isPublic: true };
+  }
+
+  return { groupId, isPublic };
+};
+
 
 export type SupabaseCatalogProgressUnitRow = {
   id: string;
@@ -76,4 +89,3 @@ export const buildPostPreviewText = (bodyText?: string | null): string | null =>
     ? `${normalized.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…`
     : normalized;
 };
-

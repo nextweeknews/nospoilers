@@ -5,6 +5,7 @@ import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
 import {
   mapAvatarPathToUiValue,
+  resolveSingleGroupAudience,
   type SupabaseCatalogProgressUnitRow,
   type SupabaseGroupRow,
   type SupabasePostAttachmentInsert,
@@ -423,10 +424,15 @@ export default function App() {
                   return;
                 }
 
+                const audience = resolveSingleGroupAudience({
+                  groupId: payload.group_id,
+                  isPublic: true
+                });
+
                 const postInsert: SupabasePostInsert = {
                   author_user_id: currentUser.id,
                   body_text: payload.body_text,
-                  group_id: payload.group_id,
+                  group_id: audience.groupId,
                   catalog_item_id: payload.catalog_item_id,
                   progress_unit_id: payload.progress_unit_id,
                   tenor_gif_id: payload.tenor_gif_id,
