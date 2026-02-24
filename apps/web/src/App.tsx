@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
@@ -107,6 +107,16 @@ export const App = () => {
   const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
+  const authResolvedRef = useRef(false);
+
+  const markAuthResolved = () => {
+    if (authResolvedRef.current) {
+      return;
+    }
+
+    authResolvedRef.current = true;
+    setAuthResolved(true);
+  };
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -138,6 +148,18 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+    const authResolveTimeout = window.setTimeout(() => {
+      if (authResolvedRef.current || isCancelled) {
+        return;
+      }
+
+      setCurrentUser(undefined);
+      setNeedsOnboarding(false);
+      setAuthStatus("Sign-in check took too long. Please try signing in again.");
+      markAuthResolved();
+    }, 2000);
+
     const syncSession = async () => {
       try {
         const { data, error } = await getSession();
@@ -150,7 +172,10 @@ export const App = () => {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
       } finally {
-        setAuthResolved(true);
+        if (!isCancelled) {
+          window.clearTimeout(authResolveTimeout);
+          markAuthResolved();
+        }
       }
     };
 
@@ -163,11 +188,16 @@ export const App = () => {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
       } finally {
-        setAuthResolved(true);
+        if (!isCancelled) {
+          window.clearTimeout(authResolveTimeout);
+          markAuthResolved();
+        }
       }
     });
 
     return () => {
+      isCancelled = true;
+      window.clearTimeout(authResolveTimeout);
       data.subscription.unsubscribe();
     };
   }, []);
