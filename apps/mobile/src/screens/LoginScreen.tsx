@@ -64,6 +64,9 @@ const STATUS_TONE_COLORS: Record<StatusTone, string> = {
   error: "#b91c1c"
 };
 
+const TERMS_URL = "https://nospoilers.app/terms";
+const PRIVACY_POLICY_URL = "https://nospoilers.app/privacy-policy";
+
 const callbackIndicatesRecovery = (url: string): boolean => {
   const parsed = Linking.parse(url);
   const params = ("params" in parsed && parsed.params ? parsed.params : {}) as Record<string, unknown>;
@@ -194,6 +197,21 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     saveResult(mapResult(data.session.user, data.session));
   };
 
+  const handleOpenLegalLink = async (url: string) => {
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      await WebBrowser.openBrowserAsync(url);
+      return;
+    }
+
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      setStatus({ message: "Unable to open link right now.", tone: "error" });
+      return;
+    }
+
+    await Linking.openURL(url);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
       <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Sign in</AppText>
@@ -244,6 +262,17 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       >
         <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</AppText>
       </Pressable>
+      <AppText style={[styles.legalText, { color: theme.colors.textSecondary }]}> 
+        By continuing, you agree to{" "}
+        <AppText style={[styles.legalLink, { color: theme.colors.accent }]} onPress={() => void handleOpenLegalLink(TERMS_URL)}>
+          Terms
+        </AppText>{" "}
+        and{" "}
+        <AppText style={[styles.legalLink, { color: theme.colors.accent }]} onPress={() => void handleOpenLegalLink(PRIVACY_POLICY_URL)}>
+          Privacy Policy
+        </AppText>
+        .
+      </AppText>
 
       <View style={[styles.fallbackSection, { borderTopColor: theme.colors.border }]}> 
         <AppText style={[styles.fallbackLabel, { color: theme.colors.textSecondary }]}>Fallback: email/password</AppText>
@@ -316,6 +345,17 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             >
               <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</AppText>
             </Pressable>
+            <AppText style={[styles.legalText, { color: theme.colors.textSecondary }]}> 
+              By continuing, you agree to{" "}
+              <AppText style={[styles.legalLink, { color: theme.colors.accent }]} onPress={() => void handleOpenLegalLink(TERMS_URL)}>
+                Terms
+              </AppText>{" "}
+              and{" "}
+              <AppText style={[styles.legalLink, { color: theme.colors.accent }]} onPress={() => void handleOpenLegalLink(PRIVACY_POLICY_URL)}>
+                Privacy Policy
+              </AppText>
+              .
+            </AppText>
           </>
         )}
       </View>
@@ -342,5 +382,7 @@ const styles = StyleSheet.create({
   secondaryButton: { borderRadius: radiusTokens.sm, paddingVertical: 10, alignItems: "center" },
   secondaryText: { fontWeight: "600" },
   link: { fontWeight: "600" },
+  legalText: { fontSize: 12, textAlign: "center", lineHeight: 18 },
+  legalLink: { fontWeight: "600" },
   status: { marginTop: 4 }
 });

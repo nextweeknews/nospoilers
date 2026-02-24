@@ -137,6 +137,9 @@ const STATUS_TONE_COLORS: Record<StatusTone, string> = {
   error: "#b91c1c"
 };
 
+const TERMS_URL = "/terms";
+const PRIVACY_POLICY_URL = "/privacy-policy";
+
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [authView, setAuthView] = useState<"phone" | "email">("phone");
   const [selectedCountry, setSelectedCountry] = useState(detectCountryCode);
@@ -328,6 +331,20 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     setEmailActionInFlight(null);
   };
 
+  const legalDisclosure = (
+    <small style={legalDisclosureStyle(theme)}>
+      By continuing, you agree to{" "}
+      <a href={TERMS_URL} target="_blank" rel="noreferrer" style={legalLinkStyle(theme)}>
+        Terms
+      </a>{" "}
+      and{" "}
+      <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" style={legalLinkStyle(theme)}>
+        Privacy Policy
+      </a>
+      .
+    </small>
+  );
+
   return (
     <section
       style={{
@@ -451,6 +468,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                     Create account
                   </button>
                   <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>New here? Create an account with your email and password.</small>
+                  {legalDisclosure}
                 </div>
               </>
             )}
@@ -475,6 +493,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             <button type="button" style={emailButton(theme)} onClick={() => setAuthView("email")}>
               Continue with Email
             </button>
+            {legalDisclosure}
           </>
         ) : (
           <button type="button" style={emailButton(theme)} onClick={() => setAuthView("phone")}>
@@ -590,6 +609,17 @@ const linkButton = (theme: AppTheme): CSSProperties => ({
   cursor: "pointer",
   justifySelf: "start",
   padding: "2px 0"
+});
+
+const legalDisclosureStyle = (theme: AppTheme): CSSProperties => ({
+  color: theme.colors.textSecondary,
+  textAlign: "center",
+  lineHeight: 1.4
+});
+
+const legalLinkStyle = (theme: AppTheme): CSSProperties => ({
+  color: theme.colors.accent,
+  fontWeight: Number(typographyTokens.weight.semibold)
 });
 
 const socialBaseButton: CSSProperties = {
