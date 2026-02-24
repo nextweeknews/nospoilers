@@ -124,6 +124,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Enter your number to start.");
+  const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | null>(null);
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
@@ -194,6 +195,38 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
 
     setStatus("Redirecting to Google sign-in...");
+  };
+
+  const handleEmailSignIn = async () => {
+    setEmailActionInFlight("sign-in");
+    const { data, error } = await signInWithPassword(email, password);
+    if (error || !data.user || !data.session) {
+      setStatus(error?.message ?? "Unable to sign in with email and password.");
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    onSignedIn(mapResult(data.user, data.session));
+    setEmailActionInFlight(null);
+  };
+
+  const handleCreateAccount = async () => {
+    setEmailActionInFlight("create-account");
+    const { data, error } = await signUpWithPassword(email, password);
+    if (error) {
+      setStatus(error.message);
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    if (data.user && data.session) {
+      onSignedIn(mapResult(data.user, data.session));
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    setStatus("Check your email to finish sign up.");
+    setEmailActionInFlight(null);
   };
 
   return (
@@ -283,32 +316,26 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           <form
             onSubmit={async (event) => {
               event.preventDefault();
-              const { data: signInData, error: signInError } = await signInWithPassword(email, password);
-              if (!signInError && signInData.user && signInData.session) {
-                onSignedIn(mapResult(signInData.user, signInData.session));
-                return;
-              }
-
-              const { data: signUpData, error: signUpError } = await signUpWithPassword(email, password);
-              if (signUpError) {
-                setStatus(signUpError.message);
-                return;
-              }
-
-              if (signUpData.user && signUpData.session) {
-                onSignedIn(mapResult(signUpData.user, signUpData.session));
-                return;
-              }
-
-              setStatus("Check your email to finish sign up.");
+              await handleEmailSignIn();
             }}
             style={{ display: "grid", gap: spacingTokens.sm, marginTop: spacingTokens.xs }}
           >
             <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Email" style={inputStyle(theme)} />
             <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
-            <button type="submit" style={emailButton(theme)}>
-              Log in or sign up
-            </button>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <button type="submit" style={emailButton(theme)} disabled={emailActionInFlight !== null}>
+                Sign in
+              </button>
+              <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>Already have an account? Sign in with your existing email and password.</small>
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              <button type="button" style={emailButton(theme)} onClick={handleCreateAccount} disabled={emailActionInFlight !== null}>
+                Create account
+              </button>
+              <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>New here? Create an account with your email and password.</small>
+            </div>
           </form>
         )}
 
