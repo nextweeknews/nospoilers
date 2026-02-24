@@ -79,18 +79,9 @@ const detectCountryCode = () => {
 
 const formatPhoneNumber = (value: string) => {
   const digits = value.replace(/\D/g, "").slice(0, 10);
-  if (digits.length === 0) {
-    return "";
-  }
-
-  if (digits.length < 4) {
-    return `(${digits}`;
-  }
-
-  if (digits.length < 7) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  }
-
+  if (digits.length === 0) return "";
+  if (digits.length < 4) return `(${digits}`;
+  if (digits.length < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 };
 
@@ -158,7 +149,10 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
   const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | "forgot-password" | "update-password" | null>(null);
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
+  const [isHandlingOAuthCallback, setIsHandlingOAuthCallback] = useState(false);
+
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
+  const oauthExchangeStartedRef = useRef(false);
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
   const sortedCountryOptions = useMemo(
@@ -167,14 +161,10 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   );
 
   useEffect(() => {
-    if (!countryMenuOpen) {
-      return;
-    }
+    if (!countryMenuOpen) return;
 
     const closeIfOutside = (event: MouseEvent | FocusEvent) => {
-      if (countrySelectRef.current?.contains(event.target as Node)) {
-        return;
-      }
+      if (countrySelectRef.current?.contains(event.target as Node)) return;
       setCountryMenuOpen(false);
     };
 
@@ -188,54 +178,53 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   }, [countryMenuOpen]);
 
   useEffect(() => {
-    if (!resendAvailableAtMs) {
-      return;
-    }
+    if (!resendAvailableAtMs) return;
 
-    const timer = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, [resendAvailableAtMs]);
 
-  // Handle callback URL state (OAuth / password recovery) and auth events after redirects.
+  // Handle callback URL state (OAuth / password recovery) and complete OAuth exchange.
   useEffect(() => {
     let active = true;
-  
+
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const searchParams = new URLSearchParams(window.location.search);
     const callbackType = hashParams.get("type") ?? searchParams.get("type");
     const oauthCode = searchParams.get("code");
-  
+
     void (async () => {
       try {
-        if (oauthCode) {
+        if (oauthCode && !oauthExchangeStartedRef.current) {
+          oauthExchangeStartedRef.current = true;
+          setIsHandlingOAuthCallback(true);
           setStatus({ message: "Finishing Google sign-in…", tone: "info" });
-  
+
+          // Supabase expects the code string here
           const { error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
-  
+
           if (!active) return;
-  
+
           if (error) {
             console.error("exchangeCodeForSession returned error:", {
               message: error.message,
               status: (error as any).status,
-              code: (error as any).code,
+              code: (error as any).code
             });
             setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
+            setIsHandlingOAuthCallback(false);
             return;
           }
-  
+
           // Remove ?code=... after successful exchange
           const cleanUrl = `${window.location.origin}${window.location.pathname}`;
           window.history.replaceState({}, document.title, cleanUrl);
+
+          setIsHandlingOAuthCallback(false);
         }
-  
+
         if (!active) return;
-  
+
         if (callbackType === "recovery") {
           setAuthView("email");
           setIsPasswordResetMode(true);
@@ -243,25 +232,21 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         }
       } catch (err) {
         if (!active) return;
-  
+
         console.error("exchangeCodeForSession threw:", err);
-  
-        const message =
-          err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
-  
+        const message = err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
         setStatus({ message: `Unable to finish Google sign-in. ${message}`, tone: "error" });
+        setIsHandlingOAuthCallback(false);
       }
     })();
-  
+
     return () => {
       active = false;
     };
   }, []);
-  
-  // ✅ This needs its own useEffect
+
+  // Listen for auth events (including OAuth completion).
   useEffect(() => {
-    let active = true;
-  
     const { data: authListener } = onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setAuthView("email");
@@ -269,49 +254,56 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
         return;
       }
-  
+
       if (event === "SIGNED_IN" && session?.user) {
         onSignedIn(mapResult(session.user, session));
       }
     });
-  
+
     return () => {
-      active = false;
       authListener.subscription.unsubscribe();
     };
   }, [onSignedIn]);
-  
-  // Catch already-restored sessions after OAuth redirect / page reload.
+
+  // Catch already-restored sessions after page reload, but avoid racing during OAuth callback exchange.
   useEffect(() => {
     let active = true;
-  
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasOAuthCode = searchParams.has("code");
+
+    if (hasOAuthCode || isHandlingOAuthCallback) {
+      return () => {
+        active = false;
+      };
+    }
+
     void (async () => {
       const { data, error } = await getSession();
-  
+
       if (!active) return;
-  
+
       if (error) {
         console.error("getSession after redirect failed:", error);
         return;
       }
-  
+
       if (data.session?.user) {
         onSignedIn(mapResult(data.session.user, data.session));
       }
     })();
-  
+
     return () => {
       active = false;
     };
-  }, [onSignedIn]);
-  
+  }, [onSignedIn, isHandlingOAuthCallback]);
+
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
   const otpDigits = smsCode.replace(/\D/g, "").slice(0, 6);
-  const resendCountdownSeconds = resendAvailableAtMs
-    ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000))
-    : 0;
+  const resendCountdownSeconds = resendAvailableAtMs ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000)) : 0;
   const canResendOtp = resendCountdownSeconds === 0;
+
   const handlePhoneStart = async (event: FormEvent) => {
     event.preventDefault();
 
@@ -378,7 +370,10 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       return;
     }
 
-    setStatus({ message: "If an account exists for that email, check your email for password reset instructions.", tone: "success" });
+    setStatus({
+      message: "If an account exists for that email, check your email for password reset instructions.",
+      tone: "success"
+    });
     setEmailActionInFlight(null);
   };
 
@@ -581,7 +576,13 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             }}
             style={{ display: "grid", gap: spacingTokens.sm, marginTop: spacingTokens.xs }}
           >
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Email" style={inputStyle(theme)} />
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              placeholder="Email"
+              style={inputStyle(theme)}
+            />
             {isPasswordResetMode ? (
               <>
                 <input
@@ -644,7 +645,14 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       <footer style={{ display: "grid", gap: spacingTokens.sm }}>
         {authView === "phone" ? (
           <>
-            <button type="button" id="google-signin-btn" aria-label="Sign in with Google" onClick={handleGoogleOAuth} style={googleButton(theme)}>
+            <button
+              type="button"
+              id="google-signin-btn"
+              aria-label="Sign in with Google"
+              onClick={handleGoogleOAuth}
+              style={googleButton(theme)}
+              disabled={isHandlingOAuthCallback}
+            >
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
                 <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
                 <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z" />
