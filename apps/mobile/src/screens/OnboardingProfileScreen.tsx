@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import { authService } from "../services/authClient";
+import { AppText, AppTextInput } from "../components/Typography";
 
 type OnboardingProfileScreenProps = {
   user: AuthUser;
@@ -34,12 +35,12 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-      <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Complete your profile</Text>
-      <Text style={{ color: theme.colors.textSecondary }}>Add all required profile fields before entering NoSpoilers.</Text>
-      <Text style={{ color: theme.colors.textSecondary }}>Missing: {missingFields.join(", ") || "none"}</Text>
+      <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Complete your profile</AppText>
+      <AppText style={{ color: theme.colors.textSecondary }}>Add all required profile fields before entering NoSpoilers.</AppText>
+      <AppText style={{ color: theme.colors.textSecondary }}>Missing: {missingFields.join(", ") || "none"}</AppText>
 
-      <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
-      <TextInput value={username} onChangeText={setUsername} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} autoCapitalize="none" style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput value={username} onChangeText={setUsername} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} autoCapitalize="none" style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
 
       <Pressable
         style={[styles.button, { backgroundColor: theme.colors.accent }]}
@@ -94,10 +95,10 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
           }
         }}
       >
-        <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>{saving ? "Saving…" : "Save and continue"}</Text>
+        <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>{saving ? "Saving…" : "Save and continue"}</AppText>
       </Pressable>
 
-      <Text style={{ color: theme.colors.success }}>{status}</Text>
+      <AppText style={{ color: theme.colors.success }}>{status}</AppText>
     </View>
   );
 };

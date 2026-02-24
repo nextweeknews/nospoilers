@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import { authRedirectTo, completeOAuthSession, signInWithGoogle, signInWithOtp, signInWithPassword, signUpWithPassword, verifySmsOtp } from "../services/authClient";
+import { AppText, AppTextInput } from "../components/Typography";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -76,10 +77,10 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-      <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Sign in</Text>
-      <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Phone + social first. Email/password is fallback.</Text>
+      <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Sign in</AppText>
+      <AppText style={[styles.subtitle, { color: theme.colors.textSecondary }]}>Phone + social first. Email/password is fallback.</AppText>
 
-      <TextInput placeholder="Phone number" placeholderTextColor={theme.colors.textSecondary} value={phone} onChangeText={setPhone} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput placeholder="Phone number" placeholderTextColor={theme.colors.textSecondary} value={phone} onChangeText={setPhone} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <Pressable
         style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
@@ -93,12 +94,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           setStatus("SMS verification code sent.");
         }}
       >
-        <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Send SMS code</Text>
+        <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Send SMS code</AppText>
       </Pressable>
 
       {challengeStarted ? (
         <>
-          <TextInput placeholder="One-time code" placeholderTextColor={theme.colors.textSecondary} value={code} onChangeText={setCode} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+          <AppTextInput placeholder="One-time code" placeholderTextColor={theme.colors.textSecondary} value={code} onChangeText={setCode} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
           <Pressable
             style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
             onPress={async () => {
@@ -111,7 +112,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               saveResult(mapResult(data.user, data.session));
             }}
           >
-            <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Verify code</Text>
+            <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Verify code</AppText>
           </Pressable>
         </>
       ) : null}
@@ -122,13 +123,13 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           await handleOAuth();
         }}
       >
-        <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</Text>
+        <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</AppText>
       </Pressable>
 
       <View style={[styles.fallbackSection, { borderTopColor: theme.colors.border }]}> 
-        <Text style={[styles.fallbackLabel, { color: theme.colors.textSecondary }]}>Fallback: email/password</Text>
-        <TextInput placeholder="Email" placeholderTextColor={theme.colors.textSecondary} value={email} onChangeText={setEmail} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
-        <TextInput
+        <AppText style={[styles.fallbackLabel, { color: theme.colors.textSecondary }]}>Fallback: email/password</AppText>
+        <AppTextInput placeholder="Email" placeholderTextColor={theme.colors.textSecondary} value={email} onChangeText={setEmail} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <AppTextInput
           placeholder="Password"
           placeholderTextColor={theme.colors.textSecondary}
           value={password}
@@ -148,7 +149,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             saveResult(mapResult(data.user, data.session));
           }}
         >
-          <Text style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign in with email</Text>
+          <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign in with email</AppText>
         </Pressable>
         <Pressable
           style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
@@ -167,11 +168,11 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             setStatus("Check your email to finish sign up.");
           }}
         >
-          <Text style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</Text>
+          <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</AppText>
         </Pressable>
       </View>
 
-      <Text style={[styles.status, { color: theme.colors.success }]}>{status}</Text>
+      <AppText style={[styles.status, { color: theme.colors.success }]}>{status}</AppText>
     </View>
   );
 };

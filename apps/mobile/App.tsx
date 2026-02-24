@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { SafeAreaView, StyleSheet, Text, View, useColorScheme } from "react-native";
+import { SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
@@ -11,6 +11,7 @@ import { OnboardingProfileScreen } from "./src/screens/OnboardingProfileScreen";
 import { mobileConfig } from "./src/config/env";
 import { getSession, onAuthStateChange } from "./src/services/authClient";
 import { supabaseClient } from "./src/services/supabaseClient";
+import { AppText } from "./src/components/Typography";
 
 type GroupEntity = {
   id: string;
@@ -122,9 +123,9 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.container, { padding: spacingTokens.lg }]}>
-        <Text style={[styles.configText, { color: theme.colors.textSecondary }]}> 
+        <AppText style={[styles.configText, { color: theme.colors.textSecondary }]}> 
           Env {mobileConfig.environment} · API {mobileConfig.apiBaseUrl} · Auth {mobileConfig.authClientId}
-        </Text>
+        </AppText>
         {!authResolved || !currentUser ? (
           <LoginScreen onSignedIn={onSignedIn} theme={theme} />
         ) : !hasCompleteProfile(currentUser) ? (

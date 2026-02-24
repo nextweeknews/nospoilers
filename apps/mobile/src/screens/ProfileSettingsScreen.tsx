@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
@@ -14,6 +14,7 @@ import {
   linkPhoneIdentity,
   reauthenticateForIdentityLink
 } from "../services/authClient";
+import { AppText, AppTextInput } from "../components/Typography";
 
 type ProfileSettingsScreenProps = {
   user?: AuthUser;
@@ -70,16 +71,16 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-        <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Sign in first, then open Account to edit your profile.</Text>
+        <AppText style={[styles.status, { color: theme.colors.textSecondary }]}>Sign in first, then open Account to edit your profile.</AppText>
       </View>
     );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
-      <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Account settings</Text>
+      <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Account settings</AppText>
 
-      <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <Pressable
         style={[styles.button, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
@@ -88,10 +89,10 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
           onProfileUpdated(updatedUser);
         }}
       >
-        <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Save display name</Text>
+        <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Save display name</AppText>
       </Pressable>
 
-      <TextInput value={username} onChangeText={setUsername} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput value={username} onChangeText={setUsername} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <Pressable
         style={[styles.button, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
@@ -106,10 +107,10 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
           onProfileUpdated(updatedUser);
         }}
       >
-        <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Reserve + save username</Text>
+        <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Reserve + save username</AppText>
       </Pressable>
 
-      <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Theme preference</Text>
+      <AppText style={[styles.status, { color: theme.colors.textSecondary }]}>Theme preference</AppText>
       <View style={styles.themeRow}>
         {(["system", "light", "dark"] as ThemePreference[]).map((option) => (
           <Pressable
@@ -128,7 +129,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
               setStatus(`Theme preference saved as ${option}.`);
             }}
           >
-            <Text style={{ color: option === themePreference ? theme.colors.accentText : theme.colors.textPrimary }}>{option}</Text>
+            <AppText style={{ color: option === themePreference ? theme.colors.accentText : theme.colors.textPrimary }}>{option}</AppText>
           </Pressable>
         ))}
       </View>
@@ -153,14 +154,14 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
           onProfileUpdated(updatedUser);
         }}
       >
-        <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Update avatar</Text>
+        <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Update avatar</AppText>
       </Pressable>
 
       <View style={[styles.linkSection, { borderTopColor: theme.colors.border }]}> 
-        <Text style={[styles.subtitle, { color: theme.colors.textPrimary }]}>Connected sign-in methods</Text>
-        <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</Text>
+        <AppText style={[styles.subtitle, { color: theme.colors.textPrimary }]}>Connected sign-in methods</AppText>
+        <AppText style={[styles.status, { color: theme.colors.textSecondary }]}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</AppText>
 
-        <TextInput value={linkPhone} onChangeText={setLinkPhone} placeholder="Phone for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <AppTextInput value={linkPhone} onChangeText={setLinkPhone} placeholder="Phone for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
@@ -174,7 +175,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
             setStatus("Phone link started. Verify OTP sent to complete linking.");
           }}
         >
-          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link phone</Text>
+          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Link phone</AppText>
         </Pressable>
 
         <Pressable
@@ -203,11 +204,11 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
             setStatus("Google identity linked.");
           }}
         >
-          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link Google</Text>
+          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Link Google</AppText>
         </Pressable>
 
-        <TextInput value={linkEmail} onChangeText={setLinkEmail} placeholder="Email for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
-        <TextInput value={linkPassword} onChangeText={setLinkPassword} placeholder="Password for linking" placeholderTextColor={theme.colors.textSecondary} secureTextEntry style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <AppTextInput value={linkEmail} onChangeText={setLinkEmail} placeholder="Email for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <AppTextInput value={linkPassword} onChangeText={setLinkPassword} placeholder="Password for linking" placeholderTextColor={theme.colors.textSecondary} secureTextEntry style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
@@ -221,14 +222,14 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
             setStatus("Email/password linked. Check your email if verification is required.");
           }}
         >
-          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link email/password</Text>
+          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Link email/password</AppText>
         </Pressable>
       </View>
 
       <View style={[styles.linkSection, { borderTopColor: theme.colors.border }]}> 
-        <Text style={[styles.subtitle, { color: "#b42318" }]}>Delete account</Text>
-        <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Permanent warning: this deletes your profile and identities, revokes all sessions, and cannot be undone.</Text>
-        <TextInput value={deleteConfirmation} onChangeText={setDeleteConfirmation} placeholder='Type "DELETE" to enable' placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <AppText style={[styles.subtitle, { color: "#b42318" }]}>Delete account</AppText>
+        <AppText style={[styles.status, { color: theme.colors.textSecondary }]}>Permanent warning: this deletes your profile and identities, revokes all sessions, and cannot be undone.</AppText>
+        <AppTextInput value={deleteConfirmation} onChangeText={setDeleteConfirmation} placeholder='Type "DELETE" to enable' placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
         <Pressable
           disabled={deleteConfirmation !== "DELETE"}
           style={[styles.button, { backgroundColor: "#b42318", opacity: deleteConfirmation === "DELETE" ? 1 : 0.6 }]}
@@ -250,11 +251,11 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
             ]);
           }}
         >
-          <Text style={[styles.buttonText, { color: "#fff" }]}>Delete account permanently</Text>
+          <AppText style={[styles.buttonText, { color: "#fff" }]}>Delete account permanently</AppText>
         </Pressable>
       </View>
 
-      <Text style={[styles.status, { color: theme.colors.success }]}>{status}</Text>
+      <AppText style={[styles.status, { color: theme.colors.success }]}>{status}</AppText>
     </View>
   );
 };

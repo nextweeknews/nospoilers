@@ -1,5 +1,6 @@
 import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { AppText } from "./Typography";
 
 type BottomTabsProps = {
   activeTab: string;
@@ -14,7 +15,7 @@ export const BottomTabs = ({ activeTab, onSelect, theme }: BottomTabsProps) => (
       const tokens = componentTokens.navBar(theme, active);
       return (
         <Pressable key={item.key} onPress={() => onSelect(item.key)} style={[styles.item, { borderColor: tokens.borderColor, backgroundColor: tokens.background }]}>
-          <Text style={[styles.label, { color: tokens.textColor }]}>{item.label}</Text>
+          <AppText style={[styles.label, { color: tokens.textColor }]}>{item.label}</AppText>
         </Pressable>
       );
     })}
