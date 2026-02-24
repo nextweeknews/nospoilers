@@ -1,29 +1,12 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient, type Session, type User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { mobileConfig } from "../config/env";
+import { authClient, authRedirectTo, completeOAuthSession, signInWithGoogle } from "../services/authClient";
 
 WebBrowser.maybeCompleteAuthSession();
-
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY for mobile auth flows.");
-}
-
-const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
-  auth: {
-    detectSessionInUrl: false,
-    persistSession: true,
-    storage: AsyncStorage as unknown as Storage
-  }
-});
 
 const mapResult = (user: User, session: Session): ProviderLoginResult => ({
   linked: false,
@@ -55,11 +38,6 @@ type LoginScreenProps = {
 };
 
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
-  const fallbackRedirectTo = Linking.createURL("auth/callback", {
-    scheme: mobileConfig.supabaseAuthDeepLinkScheme
-  });
-  const redirectTo = mobileConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
-
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
@@ -72,39 +50,21 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     setStatus(`Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`);
   };
 
-  const handleOAuth = async (provider: "google") => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo,
-        skipBrowserRedirect: true
-      }
-    });
+  const handleOAuth = async () => {
+    const { data, error } = await signInWithGoogle();
 
     if (error || !data.url) {
       setStatus(error?.message ?? "Unable to start OAuth flow.");
       return;
     }
 
-    const authResult = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+    const authResult = await WebBrowser.openAuthSessionAsync(data.url, authRedirectTo);
     if (authResult.type !== "success" || !authResult.url) {
       setStatus("OAuth sign-in cancelled.");
       return;
     }
 
-    const { params } = Linking.parse(authResult.url);
-    const accessToken = typeof params.access_token === "string" ? params.access_token : undefined;
-    const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : undefined;
-
-    if (!accessToken || !refreshToken) {
-      setStatus("Missing session tokens from OAuth callback.");
-      return;
-    }
-
-    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken
-    });
+    const { data: sessionData, error: sessionError } = await completeOAuthSession(authResult.url);
 
     if (sessionError || !sessionData.session || !sessionData.user) {
       setStatus(sessionError?.message ?? "Unable to finalize OAuth login.");
@@ -123,7 +83,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       <Pressable
         style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
-          const { error } = await supabase.auth.signInWithOtp({ phone });
+          const { error } = await authClient.signInWithOtp({ phone });
           if (error) {
             setStatus(error.message);
             return;
@@ -142,7 +102,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           <Pressable
             style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
             onPress={async () => {
-              const { data, error } = await supabase.auth.verifyOtp({ phone, token: code, type: "sms" });
+              const { data, error } = await authClient.verifyOtp({ phone, token: code, type: "sms" });
               if (error || !data.user || !data.session) {
                 setStatus(error?.message ?? "Unable to verify code.");
                 return;
@@ -159,7 +119,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       <Pressable
         style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
-          await handleOAuth("google");
+          await handleOAuth();
         }}
       >
         <Text style={[styles.primaryText, { color: theme.colors.accentText }]}>Continue with Google</Text>
@@ -179,7 +139,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         <Pressable
           style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
           onPress={async () => {
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            const { data, error } = await authClient.signInWithPassword({ email, password });
             if (error || !data.user || !data.session) {
               setStatus(error?.message ?? "Unable to sign in with email.");
               return;
@@ -193,7 +153,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         <Pressable
           style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
           onPress={async () => {
-            const { data, error } = await supabase.auth.signUp({ email, password });
+            const { data, error } = await authClient.signUp({ email, password });
             if (error) {
               setStatus(error.message);
               return;

@@ -132,7 +132,7 @@ export default function App() {
           <>
             {activeTab === "account" ? (
               <ProfileSettingsScreen
-                userId={currentUser.id}
+                user={currentUser}
                 onProfileUpdated={setCurrentUser}
                 theme={theme}
                 themePreference={themePreference}

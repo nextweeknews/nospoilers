@@ -1,20 +1,8 @@
 import { FormEvent, type CSSProperties, useState } from "react";
-import { createClient, type Session, type User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { brandPalette, elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
-import { webConfig } from "../config/env";
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY for web auth flows.");
-}
-
-const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "");
-
-const fallbackRedirectTo = `${window.location.origin}/auth/callback`;
-const oauthRedirectTo = webConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
+import { authClient, signInWithGoogle } from "../services/authClient";
 
 const mapResult = (user: User, session: Session): ProviderLoginResult => ({
   linked: false,
@@ -55,7 +43,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   const handlePhoneStart = async (event: FormEvent) => {
     event.preventDefault();
-    const { error } = await supabase.auth.signInWithOtp({ phone });
+    const { error } = await authClient.signInWithOtp({ phone });
     if (error) {
       setStatus(error.message);
       return;
@@ -67,7 +55,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   const handlePhoneVerify = async (event: FormEvent) => {
     event.preventDefault();
-    const { data, error } = await supabase.auth.verifyOtp({ phone, token: smsCode, type: "sms" });
+    const { data, error } = await authClient.verifyOtp({ phone, token: smsCode, type: "sms" });
     if (error || !data.user || !data.session) {
       setStatus(error?.message ?? "Unable to verify code.");
       return;
@@ -77,10 +65,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   };
 
   const handleGoogleOAuth = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: oauthRedirectTo }
-    });
+    const { error } = await signInWithGoogle();
 
     if (error) {
       setStatus(error.message);
@@ -146,7 +131,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         <form
           onSubmit={async (event) => {
             event.preventDefault();
-            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            const { data, error } = await authClient.signInWithPassword({ email, password });
             if (error || !data.user || !data.session) {
               setStatus(error?.message ?? "Unable to sign in with email.");
               return;
@@ -164,7 +149,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           <button
             type="button"
             onClick={async () => {
-              const { data, error } = await supabase.auth.signUp({ email, password });
+              const { data, error } = await authClient.signUp({ email, password });
               if (error) {
                 setStatus(error.message);
                 return;

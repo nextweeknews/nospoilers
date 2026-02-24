@@ -1,23 +1,70 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
-import { authService } from "../services/authClient";
+import {
+  authRedirectTo,
+  authService,
+  completeOAuthSession,
+  getAuthUser,
+  linkEmailPasswordIdentity,
+  linkGoogleIdentity,
+  linkPhoneIdentity,
+  reauthenticateForIdentityLink
+} from "../services/authClient";
 
 type ProfileSettingsScreenProps = {
-  userId?: string;
+  user?: AuthUser;
   onProfileUpdated: (user: AuthUser) => void;
   theme: AppTheme;
   themePreference: ThemePreference;
   onThemePreferenceChanged: (next: ThemePreference) => void;
 };
 
-export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePreference, onThemePreferenceChanged }: ProfileSettingsScreenProps) => {
+export const ProfileSettingsScreen = ({ user, onProfileUpdated, theme, themePreference, onThemePreferenceChanged }: ProfileSettingsScreenProps) => {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
+  const [linkPhone, setLinkPhone] = useState("");
+  const [linkEmail, setLinkEmail] = useState("");
+  const [linkPassword, setLinkPassword] = useState("");
   const [status, setStatus] = useState("Sign in to edit account settings.");
 
-  if (!userId) {
+  const identityStatus = useMemo(() => {
+    const providers = new Set((user?.identities ?? []).map((identity) => identity.provider));
+    return {
+      phone: providers.has("phone"),
+      google: providers.has("google"),
+      email: providers.has("email")
+    };
+  }, [user]);
+
+  const refreshIdentityState = async () => {
+    if (!user) {
+      return;
+    }
+
+    const { data, error } = await getAuthUser();
+    if (error || !data.user) {
+      setStatus(error?.message ?? "Unable to refresh identity status.");
+      return;
+    }
+
+    const identities = (data.user.identities ?? []).map((identity) => ({
+      provider: identity.provider === "sms" ? "phone" : (identity.provider as "phone" | "google" | "email"),
+      subject: identity.identity_id,
+      verified: Boolean(identity.last_sign_in_at)
+    }));
+
+    onProfileUpdated({
+      ...user,
+      email: data.user.email,
+      primaryPhone: data.user.phone,
+      identities
+    });
+  };
+
+  if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
         <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Sign in first, then open Account to edit your profile.</Text>
@@ -26,16 +73,16 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePr
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}> 
       <Text style={[styles.title, { color: theme.colors.textPrimary }]}>Account settings</Text>
 
       <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <Pressable
         style={[styles.button, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
-          const user = await authService.updateProfile(userId, { displayName });
-          setStatus(`Saved display name: ${user.displayName ?? "(none)"}`);
-          onProfileUpdated(user);
+          const updatedUser = await authService.updateProfile(user.id, { displayName });
+          setStatus(`Saved display name: ${updatedUser.displayName ?? "(none)"}`);
+          onProfileUpdated(updatedUser);
         }}
       >
         <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Save display name</Text>
@@ -50,10 +97,10 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePr
             setStatus(`Username unavailable (${availability.reason ?? "unknown"}).`);
             return;
           }
-          await authService.reserveUsername(username, userId);
-          const user = await authService.updateProfile(userId, { username });
-          setStatus(`Saved username: @${user.username}`);
-          onProfileUpdated(user);
+          await authService.reserveUsername(username, user.id);
+          const updatedUser = await authService.updateProfile(user.id, { username });
+          setStatus(`Saved username: @${updatedUser.username}`);
+          onProfileUpdated(updatedUser);
         }}
       >
         <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Reserve + save username</Text>
@@ -72,8 +119,8 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePr
               }
             ]}
             onPress={async () => {
-              const user = await authService.updateProfile(userId, { themePreference: option });
-              onProfileUpdated(user);
+              const updatedUser = await authService.updateProfile(user.id, { themePreference: option });
+              onProfileUpdated(updatedUser);
               onThemePreferenceChanged(option);
               setStatus(`Theme preference saved as ${option}.`);
             }}
@@ -86,25 +133,94 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePr
       <Pressable
         style={[styles.button, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
-          const upload = await authService.createAvatarUploadPlan(userId, {
+          const upload = await authService.createAvatarUploadPlan(user.id, {
             fileName: "mobile-avatar.png",
             contentType: "image/png",
             bytes: 240_000,
             width: 512,
             height: 512
           });
-          const user = await authService.finalizeAvatarUpload(userId, upload.uploadId, {
+          const updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
             contentType: "image/png",
             bytes: 240_000,
             width: 512,
             height: 512
           });
           setStatus(`Avatar updated with signed upload URL (${upload.uploadId}).`);
-          onProfileUpdated(user);
+          onProfileUpdated(updatedUser);
         }}
       >
         <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Update avatar</Text>
       </Pressable>
+
+      <View style={[styles.linkSection, { borderTopColor: theme.colors.border }]}> 
+        <Text style={[styles.subtitle, { color: theme.colors.textPrimary }]}>Connected sign-in methods</Text>
+        <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</Text>
+
+        <TextInput value={linkPhone} onChangeText={setLinkPhone} placeholder="Phone for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <Pressable
+          style={[styles.button, { backgroundColor: theme.colors.accent }]}
+          onPress={async () => {
+            await reauthenticateForIdentityLink();
+            const { error } = await linkPhoneIdentity(linkPhone);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            await refreshIdentityState();
+            setStatus("Phone link started. Verify OTP sent to complete linking.");
+          }}
+        >
+          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link phone</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, { backgroundColor: theme.colors.accent }]}
+          onPress={async () => {
+            await reauthenticateForIdentityLink();
+            const { data, error } = await linkGoogleIdentity();
+            if (error || !data?.url) {
+              setStatus(error?.message ?? "Unable to start Google link flow.");
+              return;
+            }
+
+            const oauthResult = await WebBrowser.openAuthSessionAsync(data.url, authRedirectTo);
+            if (oauthResult.type !== "success" || !oauthResult.url) {
+              setStatus("Google link cancelled.");
+              return;
+            }
+
+            const { error: sessionError } = await completeOAuthSession(oauthResult.url);
+            if (sessionError) {
+              setStatus(sessionError.message);
+              return;
+            }
+
+            await refreshIdentityState();
+            setStatus("Google identity linked.");
+          }}
+        >
+          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link Google</Text>
+        </Pressable>
+
+        <TextInput value={linkEmail} onChangeText={setLinkEmail} placeholder="Email for linking" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <TextInput value={linkPassword} onChangeText={setLinkPassword} placeholder="Password for linking" placeholderTextColor={theme.colors.textSecondary} secureTextEntry style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <Pressable
+          style={[styles.button, { backgroundColor: theme.colors.accent }]}
+          onPress={async () => {
+            await reauthenticateForIdentityLink();
+            const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            await refreshIdentityState();
+            setStatus("Email/password linked. Check your email if verification is required.");
+          }}
+        >
+          <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link email/password</Text>
+        </Pressable>
+      </View>
 
       <Text style={[styles.status, { color: theme.colors.success }]}>{status}</Text>
     </View>
@@ -114,6 +230,7 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, theme, themePr
 const styles = StyleSheet.create({
   container: { borderRadius: radiusTokens.md, padding: spacingTokens.lg, gap: spacingTokens.sm, borderWidth: 1 },
   title: { fontSize: 20, fontWeight: "600" },
+  subtitle: { fontSize: 16, fontWeight: "600" },
   input: {
     borderWidth: 1,
     borderRadius: radiusTokens.sm,
@@ -124,5 +241,6 @@ const styles = StyleSheet.create({
   buttonText: { fontWeight: "600" },
   status: {},
   themeRow: { flexDirection: "row", gap: spacingTokens.sm },
-  themeChoice: { flex: 1, borderWidth: 1, borderRadius: radiusTokens.sm, alignItems: "center", paddingVertical: 8 }
+  themeChoice: { flex: 1, borderWidth: 1, borderRadius: radiusTokens.sm, alignItems: "center", paddingVertical: 8 },
+  linkSection: { marginTop: 6, borderTopWidth: 1, paddingTop: 8, gap: spacingTokens.sm }
 });

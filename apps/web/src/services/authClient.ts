@@ -12,6 +12,29 @@ export const signInWithGoogle = async () =>
     }
   });
 
+export const linkGoogleIdentity = async () =>
+  (authClient as any).linkIdentity({
+    provider: "google",
+    options: {
+      redirectTo: authRedirectTo
+    }
+  });
+
+export const reauthenticateForIdentityLink = async () => {
+  const authApi = authClient as any;
+  if (typeof authApi.reauthenticate !== "function") {
+    return { data: null, error: null };
+  }
+
+  return authApi.reauthenticate();
+};
+
+export const linkEmailPasswordIdentity = async (email: string, password: string) => authClient.updateUser({ email, password });
+
+export const linkPhoneIdentity = async (phone: string) => authClient.updateUser({ phone });
+
+export const getAuthUser = async () => authClient.getUser();
+
 export const signOut = async () => authClient.signOut();
 
 // Backward-compatible alias while migration is in progress.
