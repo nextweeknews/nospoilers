@@ -46,7 +46,7 @@ Notes specific to this repo:
 
 ## Supabase Authentication dashboard alignment
 
-Apply these Supabase Dashboard settings per environment (`dev`, `stage`, `prod`) under **Authentication**:
+Apply these Supabase Dashboard settings for your active deployment under **Authentication** (for GitHub Pages deployments, use your GitHub Pages URL):
 
 1. Enable **Email** provider (email/password sign-in enabled).
 2. Enable **Phone** provider and configure **Twilio** SMS credentials.
@@ -54,7 +54,16 @@ Apply these Supabase Dashboard settings per environment (`dev`, `stage`, `prod`)
 4. Configure allowed redirect URLs to include:
    - Web callback URLs (`<web-origin>/auth/callback`)
    - Mobile deep-link callback URLs (`<scheme>://auth/callback`)
-5. Verify **Site URL** and **Additional Redirect URLs** include all `dev`/`stage`/`prod` endpoints.
+5. Verify **Site URL** and **Additional Redirect URLs** include your deployed endpoints.
+
+For GitHub Pages-only deployment, use:
+
+- Site URL: `https://<user>.github.io/<repo>/`
+- Redirect URL: `https://<user>.github.io/<repo>/auth/callback`
+- GitHub Actions environment secrets in **Settings → Environments → github-pages**:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  - `VITE_SUPABASE_AUTH_REDIRECT_URL` (recommended)
 
 Frontend redirect/deep-link sources must exactly match Supabase dashboard values:
 
