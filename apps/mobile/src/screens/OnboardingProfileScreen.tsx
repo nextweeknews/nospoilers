@@ -10,6 +10,7 @@ type OnboardingProfileScreenProps = {
   user: AuthUser;
   theme: AppTheme;
   onProfileCompleted: (user: AuthUser) => void;
+  onChooseDifferentLoginMethod: () => Promise<void>;
 };
 
 type UsernameFeedback = {
@@ -36,7 +37,7 @@ const validateUsername = (value: string): UsernameFeedback => {
   return { tone: "neutral", message: "Checking username availability..." };
 };
 
-export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: OnboardingProfileScreenProps) => {
+export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
   const [status, setStatus] = useState("Finish profile setup to continue.");
@@ -107,11 +108,6 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
             return;
           }
 
-          if (usernameFeedback.tone !== "success" && user.usernameNormalized !== nextUsername) {
-            setStatus("Choose an available username to continue.");
-            return;
-          }
-
           setSaving(true);
           try {
             const availability = await authService.checkUsernameAvailability(nextUsername);
@@ -139,6 +135,15 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
         <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>{saving ? "Saving…" : "Save and continue"}</AppText>
       </Pressable>
 
+      <Pressable
+        style={[styles.secondaryButton, { borderColor: theme.colors.border }]}
+        onPress={() => {
+          void onChooseDifferentLoginMethod();
+        }}
+      >
+        <AppText style={[styles.buttonText, { color: theme.colors.textPrimary }]}>Choose a different login method</AppText>
+      </Pressable>
+
       <AppText style={{ color: theme.colors.success }}>{status}</AppText>
     </View>
   );
@@ -149,5 +154,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "600" },
   input: { borderWidth: 1, borderRadius: radiusTokens.sm, paddingHorizontal: 10, paddingVertical: 8 },
   button: { borderRadius: radiusTokens.sm, paddingVertical: 10, alignItems: "center" },
+  secondaryButton: { borderWidth: 1, borderRadius: radiusTokens.sm, paddingVertical: 10, alignItems: "center" },
   buttonText: { fontWeight: "600" }
 });

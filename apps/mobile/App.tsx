@@ -9,7 +9,7 @@ import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
 import { OnboardingProfileScreen } from "./src/screens/OnboardingProfileScreen";
 import { mobileConfig } from "./src/config/env";
-import { getSession, onAuthStateChange } from "./src/services/authClient";
+import { getSession, onAuthStateChange, signOut } from "./src/services/authClient";
 import { supabaseClient } from "./src/services/supabaseClient";
 import { AppText } from "./src/components/Typography";
 
@@ -120,6 +120,12 @@ export default function App() {
     setThemePreference(result.user.preferences?.themePreference ?? "system");
   };
 
+  const onChooseDifferentLoginMethod = async () => {
+    await signOut();
+    setCurrentUser(undefined);
+    setAuthResolved(true);
+  };
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.container, { padding: spacingTokens.lg }]}>
@@ -129,7 +135,12 @@ export default function App() {
         {!authResolved || !currentUser ? (
           <LoginScreen onSignedIn={onSignedIn} theme={theme} />
         ) : !hasCompleteProfile(currentUser) ? (
-          <OnboardingProfileScreen user={currentUser} theme={theme} onProfileCompleted={setCurrentUser} />
+          <OnboardingProfileScreen
+            user={currentUser}
+            theme={theme}
+            onProfileCompleted={setCurrentUser}
+            onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
+          />
         ) : (
           <>
             {activeTab === "account" ? (

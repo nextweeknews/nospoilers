@@ -8,6 +8,7 @@ type OnboardingProfileScreenProps = {
   user: AuthUser;
   theme: AppTheme;
   onProfileCompleted: (user: AuthUser) => void;
+  onChooseDifferentLoginMethod: () => Promise<void>;
 };
 
 type UsernameFeedback = {
@@ -41,7 +42,7 @@ const validateUsername = (value: string): UsernameFeedback => {
   return { tone: "neutral", message: "Checking username availability..." };
 };
 
-export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: OnboardingProfileScreenProps) => {
+export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
   const [avatarFileName, setAvatarFileName] = useState<string>();
@@ -169,11 +170,6 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
             return;
           }
 
-          if (usernameFeedback.tone !== "success" && user.usernameNormalized !== nextUsername) {
-            setStatus("Choose an available username to continue.");
-            return;
-          }
-
           setSaving(true);
           try {
             const availability = await authService.checkUsernameAvailability(nextUsername);
@@ -216,6 +212,16 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
         }}
       >
         {saving ? "Saving…" : "Save and continue"}
+      </button>
+
+      <button
+        type="button"
+        style={secondaryButtonStyle(theme)}
+        onClick={() => {
+          void onChooseDifferentLoginMethod();
+        }}
+      >
+        Choose a different login method
       </button>
 
       <small style={{ color: theme.colors.success }}>{status}</small>
@@ -262,6 +268,16 @@ const buttonStyle = (theme: AppTheme): CSSProperties => ({
   color: theme.colors.accentText,
   border: "none",
   borderRadius: radiusTokens.sm,
+  padding: "10px 12px",
+  fontWeight: 600,
+  cursor: "pointer"
+});
+
+const secondaryButtonStyle = (theme: AppTheme): CSSProperties => ({
+  background: "transparent",
+  color: theme.colors.textPrimary,
+  borderRadius: radiusTokens.sm,
+  border: `1px solid ${theme.colors.border}`,
   padding: "10px 12px",
   fontWeight: 600,
   cursor: "pointer"
