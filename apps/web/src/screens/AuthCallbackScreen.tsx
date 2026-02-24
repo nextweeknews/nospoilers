@@ -56,7 +56,13 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
       }
     
       if (currentState === "in-progress") {
-        // Prevent duplicate exchanges (React Strict Mode / remounts)
+        // Another invocation may already be exchanging the code (e.g. React Strict Mode).
+        // If the exchange succeeded, a session may already exist — redirect when it does.
+        const { data } = await supabaseClient.auth.getSession();
+        if (data.session) {
+          sessionStorage.setItem(exchangeGuardKey, "done");
+          window.location.replace(returnPath);
+        }
         return;
       }
     
