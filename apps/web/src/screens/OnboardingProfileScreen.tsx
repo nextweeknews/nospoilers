@@ -154,10 +154,16 @@ export const OnboardingProfileScreen = ({
         updated_at: new Date().toISOString()
       };
 
-      const { error: userInsertError } = await supabaseClient.from("users").insert(profilePayload);
-
-      if (userInsertError && userInsertError.code !== "23505") {
-        setFieldErrors((prev) => ({ ...prev, general: userInsertError.message }));
+      const { error: userUpsertError } = await supabaseClient
+        .from("users")
+        .upsert(profilePayload, { onConflict: "id" });
+      
+      if (userUpsertError) {
+        if (userUpsertError.code === "23505") {
+          setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
+        } else {
+          setFieldErrors((prev) => ({ ...prev, general: userUpsertError.message }));
+        }
         return;
       }
 
