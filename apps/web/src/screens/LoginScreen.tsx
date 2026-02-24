@@ -124,6 +124,19 @@ type LoginScreenProps = {
   theme: AppTheme;
 };
 
+type StatusTone = "info" | "success" | "error";
+
+type LoginStatus = {
+  message: string;
+  tone: StatusTone;
+};
+
+const STATUS_TONE_COLORS: Record<StatusTone, string> = {
+  info: "#475569",
+  success: "#166534",
+  error: "#b91c1c"
+};
+
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [authView, setAuthView] = useState<"phone" | "email">("phone");
   const [selectedCountry, setSelectedCountry] = useState(detectCountryCode);
@@ -135,7 +148,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [status, setStatus] = useState("Enter your number to start.");
+  const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
   const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | "forgot-password" | "update-password" | null>(null);
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
@@ -175,14 +188,14 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     if (callbackType === "recovery") {
       setAuthView("email");
       setIsPasswordResetMode(true);
-      setStatus("Enter a new password to finish resetting your password.");
+      setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
     }
 
     const { data: authListener } = onAuthStateChange(async (event) => {
       if (event === "PASSWORD_RECOVERY") {
         setAuthView("email");
         setIsPasswordResetMode(true);
-        setStatus("Enter a new password to finish resetting your password.");
+        setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
       }
     });
 
@@ -198,25 +211,25 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     event.preventDefault();
 
     if (phoneDigits.length !== 10) {
-      setStatus("Enter a valid 10-digit phone number.");
+      setStatus({ message: "Enter a valid 10-digit phone number.", tone: "error" });
       return;
     }
 
     const { error } = await signInWithOtp(fullPhoneNumber);
     if (error) {
-      setStatus(error.message);
+      setStatus({ message: error.message, tone: "error" });
       return;
     }
 
     setChallengeStarted(true);
-    setStatus("SMS verification code sent.");
+    setStatus({ message: "SMS verification code sent.", tone: "success" });
   };
 
   const handlePhoneVerify = async (event: FormEvent) => {
     event.preventDefault();
     const { data, error } = await verifySmsOtp(fullPhoneNumber, smsCode);
     if (error || !data.user || !data.session) {
-      setStatus(error?.message ?? "Unable to verify code.");
+      setStatus({ message: error?.message ?? "Unable to verify code.", tone: "error" });
       return;
     }
 
@@ -227,53 +240,53 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     const { error } = await signInWithGoogle();
 
     if (error) {
-      setStatus(error.message);
+      setStatus({ message: error.message, tone: "error" });
       return;
     }
 
-    setStatus("Redirecting to Google sign-in...");
+    setStatus({ message: "Redirecting to Google sign-in...", tone: "info" });
   };
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      setStatus("Enter your email, then tap Forgot password?.");
+      setStatus({ message: "Enter your email, then tap Forgot password?.", tone: "error" });
       return;
     }
 
     setEmailActionInFlight("forgot-password");
     const { error } = await requestPasswordReset(email.trim());
     if (error) {
-      setStatus(`Unable to send reset email. ${error.message}`);
+      setStatus({ message: `Unable to send reset email. ${error.message}`, tone: "error" });
       setEmailActionInFlight(null);
       return;
     }
 
-    setStatus("If an account exists for that email, check your email for password reset instructions.");
+    setStatus({ message: "If an account exists for that email, check your email for password reset instructions.", tone: "success" });
     setEmailActionInFlight(null);
   };
 
   const handleCompletePasswordReset = async () => {
     if (newPassword.length < 8) {
-      setStatus("Use at least 8 characters for your new password.");
+      setStatus({ message: "Use at least 8 characters for your new password.", tone: "error" });
       return;
     }
 
     if (newPassword !== confirmNewPassword) {
-      setStatus("New passwords do not match.");
+      setStatus({ message: "New passwords do not match.", tone: "error" });
       return;
     }
 
     setEmailActionInFlight("update-password");
     const { error } = await updateCurrentUserPassword(newPassword);
     if (error) {
-      setStatus(`Unable to update password. ${error.message}`);
+      setStatus({ message: `Unable to update password. ${error.message}`, tone: "error" });
       setEmailActionInFlight(null);
       return;
     }
 
     const { data, error: sessionError } = await getSession();
     if (sessionError || !data.session?.user) {
-      setStatus("Password updated. Sign in with your new password.");
+      setStatus({ message: "Password updated. Sign in with your new password.", tone: "success" });
       setIsPasswordResetMode(false);
       setEmailActionInFlight(null);
       return;
@@ -287,7 +300,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     setEmailActionInFlight("sign-in");
     const { data, error } = await signInWithPassword(email, password);
     if (error || !data.user || !data.session) {
-      setStatus(error?.message ?? "Unable to sign in with email and password.");
+      setStatus({ message: error?.message ?? "Unable to sign in with email and password.", tone: "error" });
       setEmailActionInFlight(null);
       return;
     }
@@ -300,7 +313,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     setEmailActionInFlight("create-account");
     const { data, error } = await signUpWithPassword(email, password);
     if (error) {
-      setStatus(error.message);
+      setStatus({ message: error.message, tone: "error" });
       setEmailActionInFlight(null);
       return;
     }
@@ -311,7 +324,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       return;
     }
 
-    setStatus("Check your email to finish sign up.");
+    setStatus({ message: "Check your email to finish sign up.", tone: "success" });
     setEmailActionInFlight(null);
   };
 
@@ -444,7 +457,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           </form>
         )}
 
-        <small style={{ color: theme.colors.success }}>{status}</small>
+        <small style={{ color: STATUS_TONE_COLORS[status.tone] }}>{status.message}</small>
       </div>
 
       <footer style={{ display: "grid", gap: spacingTokens.sm }}>
