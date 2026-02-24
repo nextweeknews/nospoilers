@@ -186,7 +186,7 @@ export const OnboardingProfileScreen = ({
   
       // If avatar upload is part of this step, do it BEFORE writing the final public.users row,
       // so avatar_path is included in the same upsert.
-      iif (!skipOptional && avatarFileName && isBlank(updatedUser.avatarUrl)) {
+      if (!skipOptional && avatarFileName && isBlank(updatedUser.avatarUrl)) {
         try {
           console.log("[onboarding] createAvatarUploadPlan");
           const upload = await authService.createAvatarUploadPlan(user.id, {
