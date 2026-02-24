@@ -1,7 +1,8 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import { authService } from "../services/authClient";
+import { supabaseClient } from "../services/supabaseClient";
 
 type OnboardingProfileScreenProps = {
   user: AuthUser;
@@ -9,36 +10,97 @@ type OnboardingProfileScreenProps = {
   onProfileCompleted: (user: AuthUser) => void;
 };
 
+type UsernameFeedback = {
+  tone: "neutral" | "success" | "error";
+  message: string;
+};
+
 const isBlank = (value?: string): boolean => !value || value.trim().length === 0;
+
+const validateUsername = (value: string): UsernameFeedback => {
+  if (!value) {
+    return { tone: "neutral", message: "Username must be at least 3 characters." };
+  }
+
+  if (value.length < 3) {
+    return { tone: "error", message: "Usernames must be 3 characters." };
+  }
+
+  if (value.length > 16) {
+    return { tone: "error", message: "Usernames must be 16 characters or fewer." };
+  }
+
+  if (!/^[a-z0-9.]+$/.test(value)) {
+    return { tone: "error", message: "Usernames must contain only letters, numbers, and periods." };
+  }
+
+  if (value.includes("..")) {
+    return { tone: "error", message: "Usernames may not contain consecutive periods." };
+  }
+
+  return { tone: "neutral", message: "Checking username availability..." };
+};
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: OnboardingProfileScreenProps) => {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
-  const [username, setUsername] = useState(user.username ?? "");
-  const [avatarFileName, setAvatarFileName] = useState("avatar.png");
+  const [username, setUsername] = useState((user.username ?? "").toLowerCase());
+  const [avatarFileName, setAvatarFileName] = useState<string>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("Finish your profile to continue.");
   const [saving, setSaving] = useState(false);
+  const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "Username must be at least 3 characters." });
 
-  const missingFields = useMemo(() => {
-    const missing: string[] = [];
-    if (isBlank(displayName)) {
-      missing.push("display name");
+  useEffect(() => {
+    let active = true;
+    const normalized = username.trim().toLowerCase();
+    const localValidation = validateUsername(normalized);
+    if (localValidation.tone === "error") {
+      setUsernameFeedback(localValidation);
+      return;
     }
-    if (isBlank(username)) {
-      missing.push("username");
+
+    if (!normalized) {
+      setUsernameFeedback(localValidation);
+      return;
     }
-    if (isBlank(user.avatarUrl)) {
-      missing.push("avatar");
-    }
-    return missing;
-  }, [displayName, username, user.avatarUrl]);
+
+    const runCheck = async () => {
+      const [availability, dbResult] = await Promise.all([
+        authService.checkUsernameAvailability(normalized),
+        supabaseClient.from("profiles").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
+      ]);
+
+      if (!active) {
+        return;
+      }
+
+      const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
+      const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
+
+      if (unavailableInAuth || takenInDb) {
+        setUsernameFeedback({ tone: "error", message: "This username is not available." });
+        return;
+      }
+
+      setUsernameFeedback({ tone: "success", message: "This username is available." });
+    };
+
+    const timeout = window.setTimeout(() => {
+      void runCheck();
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [username, user.id, user.usernameNormalized]);
 
   return (
     <section style={cardStyle(theme)}>
       <h2 style={{ margin: 0, color: theme.colors.textPrimary }}>Complete your profile</h2>
       <p style={{ margin: 0, color: theme.colors.textSecondary }}>
-        Add all required fields before entering NoSpoilers.
+        Add a username to continue. Display name is optional and defaults to your username.
       </p>
-      <small style={{ color: theme.colors.textSecondary }}>Missing: {missingFields.join(", ") || "none"}</small>
 
       <label style={labelStyle(theme)}>
         Display name
@@ -47,13 +109,47 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
 
       <label style={labelStyle(theme)}>
         Username
-        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" style={inputStyle(theme)} />
+        <input value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} placeholder="Username" maxLength={16} style={inputStyle(theme)} />
+        <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
+          {usernameFeedback.message}
+        </small>
       </label>
 
-      <label style={labelStyle(theme)}>
-        Avatar file name
-        <input value={avatarFileName} onChange={(event) => setAvatarFileName(event.target.value)} placeholder="avatar.png" style={inputStyle(theme)} />
-      </label>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const selected = event.target.files?.[0];
+          setAvatarFileName(selected?.name);
+        }}
+      />
+
+      <div
+        style={uploadBoxStyle(theme)}
+        role="button"
+        tabIndex={0}
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const selected = event.dataTransfer.files?.[0];
+          setAvatarFileName(selected?.name);
+        }}
+      >
+        <strong style={{ color: theme.colors.textPrimary }}>Upload avatar (optional)</strong>
+        <span style={{ color: theme.colors.textSecondary }}>Drag and drop an image here, or click to upload from your computer.</span>
+        <small style={{ color: theme.colors.textSecondary }}>Selected: {avatarFileName ?? "No file selected. Using placeholder avatar."}</small>
+      </div>
 
       <button
         type="button"
@@ -61,10 +157,20 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
         disabled={saving}
         onClick={async () => {
           const nextDisplayName = displayName.trim();
-          const nextUsername = username.trim();
+          const nextUsername = username.trim().toLowerCase();
 
-          if (!nextDisplayName || !nextUsername) {
-            setStatus("Display name and username are required.");
+          if (!nextUsername) {
+            setStatus("Username is required.");
+            return;
+          }
+
+          if (validateUsername(nextUsername).tone === "error") {
+            setStatus(validateUsername(nextUsername).message);
+            return;
+          }
+
+          if (usernameFeedback.tone !== "success" && user.usernameNormalized !== nextUsername) {
+            setStatus("Choose an available username to continue.");
             return;
           }
 
@@ -72,7 +178,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
           try {
             const availability = await authService.checkUsernameAvailability(nextUsername);
             if (!availability.available && availability.normalized !== user.usernameNormalized) {
-              setStatus(`Username unavailable (${availability.reason ?? "unknown"}).`);
+              setStatus("This username is not available.");
               return;
             }
 
@@ -81,13 +187,13 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted }: Onb
             }
 
             let updatedUser = await authService.updateProfile(user.id, {
-              displayName: nextDisplayName,
+              displayName: nextDisplayName || nextUsername,
               username: nextUsername
             });
 
-            if (isBlank(updatedUser.avatarUrl)) {
+            if (avatarFileName && isBlank(updatedUser.avatarUrl)) {
               const upload = await authService.createAvatarUploadPlan(user.id, {
-                fileName: avatarFileName || "avatar.png",
+                fileName: avatarFileName,
                 contentType: "image/png",
                 bytes: 220_000,
                 width: 512,
@@ -139,6 +245,16 @@ const inputStyle = (theme: AppTheme): CSSProperties => ({
   borderRadius: radiusTokens.sm,
   border: `1px solid ${theme.colors.border}`,
   padding: "10px 12px"
+});
+
+const uploadBoxStyle = (theme: AppTheme): CSSProperties => ({
+  border: `1px dashed ${theme.colors.border}`,
+  borderRadius: radiusTokens.sm,
+  background: theme.colors.surfaceMuted,
+  padding: spacingTokens.md,
+  display: "grid",
+  gap: 6,
+  cursor: "pointer"
 });
 
 const buttonStyle = (theme: AppTheme): CSSProperties => ({

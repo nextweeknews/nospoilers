@@ -22,7 +22,7 @@ type GroupEntity = {
 
 type GroupLoadStatus = "loading" | "ready" | "empty" | "error";
 
-const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
+const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.username?.trim());
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,

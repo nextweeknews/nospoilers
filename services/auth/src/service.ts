@@ -73,7 +73,7 @@ const USERNAME_INDEX_KEY = "auth:username:index";
 const USERNAME_RESERVATIONS_KEY = "auth:username:reservations";
 const AVATAR_UPLOADS_KEY = "auth:avatar:uploads";
 
-const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9_]{1,28}[a-z0-9])?$/;
+const USERNAME_PATTERN = /^(?=.{3,16}$)(?!.*\.\.)[a-z0-9.]+$/;
 const USERNAME_RESERVATION_TTL_MS = 5 * 60 * 1000;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
@@ -253,7 +253,7 @@ export class AuthService {
         delete usernameIndex[user.usernameNormalized];
       }
 
-      user.username = this.encodeForOutput(updates.username.trim());
+      user.username = normalizedUsername;
       user.usernameNormalized = normalizedUsername;
       usernameIndex[normalizedUsername] = userId;
       delete reservations[normalizedUsername];
