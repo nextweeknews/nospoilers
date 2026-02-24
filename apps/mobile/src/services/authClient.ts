@@ -21,6 +21,7 @@ export const verifySmsOtp = async (phone: string, token: string) => authClient.v
 export const signInWithPassword = async (email: string, password: string) => authClient.signInWithPassword({ email, password });
 
 export const signUpWithPassword = async (email: string, password: string) => authClient.signUp({ email, password });
+export const requestPasswordReset = async (email: string) => authClient.resetPasswordForEmail(email, { redirectTo: authRedirectTo });
 
 export const authRedirectTo = mobileConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
 
@@ -52,6 +53,7 @@ export const reauthenticateForIdentityLink = async () => {
 };
 
 export const linkEmailPasswordIdentity = async (email: string, password: string) => authClient.updateUser({ email, password });
+export const updateCurrentUserPassword = async (password: string) => authClient.updateUser({ password });
 
 export const linkPhoneIdentity = async (phone: string) => authClient.updateUser({ phone });
 
@@ -60,11 +62,20 @@ export const getAuthUser = async () => authClient.getUser();
 export const completeOAuthSession = async (callbackUrl: string) => {
   const parsed = Linking.parse(callbackUrl);
   const params = ("params" in parsed && parsed.params ? parsed.params : {}) as Record<string, unknown>;
-  const accessToken = typeof params.access_token === "string" ? params.access_token : undefined;
-  const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : undefined;
+  const fragment = callbackUrl.includes("#") ? callbackUrl.split("#")[1] ?? "" : "";
+  const fragmentParams = new URLSearchParams(fragment);
+
+  const accessToken =
+    typeof params.access_token === "string"
+      ? params.access_token
+      : fragmentParams.get("access_token") ?? undefined;
+  const refreshToken =
+    typeof params.refresh_token === "string"
+      ? params.refresh_token
+      : fragmentParams.get("refresh_token") ?? undefined;
 
   if (!accessToken || !refreshToken) {
-    return { data: null, error: new Error("Missing session tokens from OAuth callback.") };
+    return { data: null, error: new Error("Missing session tokens from callback.") };
   }
 
   return authClient.setSession({ access_token: accessToken, refresh_token: refreshToken });

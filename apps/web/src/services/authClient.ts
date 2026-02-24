@@ -17,6 +17,7 @@ export const signInWithPassword = async (email: string, password: string) => aut
 
 export const signUpWithPassword = async (email: string, password: string) => authClient.signUp({ email, password });
 export const authRedirectTo = webConfig.supabaseAuthRedirectUrl;
+export const requestPasswordReset = async (email: string) => authClient.resetPasswordForEmail(email, { redirectTo: authRedirectTo });
 
 export const signInWithGoogle = async () =>
   authClient.signInWithOAuth({
@@ -44,6 +45,7 @@ export const reauthenticateForIdentityLink = async () => {
 };
 
 export const linkEmailPasswordIdentity = async (email: string, password: string) => authClient.updateUser({ email, password });
+export const updateCurrentUserPassword = async (password: string) => authClient.updateUser({ password });
 
 export const linkPhoneIdentity = async (phone: string) => authClient.updateUser({ phone });
 

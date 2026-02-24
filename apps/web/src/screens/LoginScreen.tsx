@@ -2,7 +2,17 @@ import { FormEvent, type CSSProperties, useEffect, useMemo, useRef, useState } f
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
-import { signInWithGoogle, signInWithOtp, signInWithPassword, signUpWithPassword, verifySmsOtp } from "../services/authClient";
+import {
+  getSession,
+  onAuthStateChange,
+  requestPasswordReset,
+  signInWithGoogle,
+  signInWithOtp,
+  signInWithPassword,
+  signUpWithPassword,
+  updateCurrentUserPassword,
+  verifySmsOtp
+} from "../services/authClient";
 
 type CountryOption = {
   code: string;
@@ -123,8 +133,11 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [challengeStarted, setChallengeStarted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [status, setStatus] = useState("Enter your number to start.");
-  const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | null>(null);
+  const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | "forgot-password" | "update-password" | null>(null);
+  const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
@@ -153,6 +166,30 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       document.removeEventListener("focusin", closeIfOutside);
     };
   }, [countryMenuOpen]);
+
+  useEffect(() => {
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const searchParams = new URLSearchParams(window.location.search);
+    const callbackType = hashParams.get("type") ?? searchParams.get("type");
+
+    if (callbackType === "recovery") {
+      setAuthView("email");
+      setIsPasswordResetMode(true);
+      setStatus("Enter a new password to finish resetting your password.");
+    }
+
+    const { data: authListener } = onAuthStateChange(async (event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthView("email");
+        setIsPasswordResetMode(true);
+        setStatus("Enter a new password to finish resetting your password.");
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
@@ -195,6 +232,55 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
 
     setStatus("Redirecting to Google sign-in...");
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setStatus("Enter your email, then tap Forgot password?.");
+      return;
+    }
+
+    setEmailActionInFlight("forgot-password");
+    const { error } = await requestPasswordReset(email.trim());
+    if (error) {
+      setStatus(`Unable to send reset email. ${error.message}`);
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    setStatus("If an account exists for that email, check your email for password reset instructions.");
+    setEmailActionInFlight(null);
+  };
+
+  const handleCompletePasswordReset = async () => {
+    if (newPassword.length < 8) {
+      setStatus("Use at least 8 characters for your new password.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setStatus("New passwords do not match.");
+      return;
+    }
+
+    setEmailActionInFlight("update-password");
+    const { error } = await updateCurrentUserPassword(newPassword);
+    if (error) {
+      setStatus(`Unable to update password. ${error.message}`);
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    const { data, error: sessionError } = await getSession();
+    if (sessionError || !data.session?.user) {
+      setStatus("Password updated. Sign in with your new password.");
+      setIsPasswordResetMode(false);
+      setEmailActionInFlight(null);
+      return;
+    }
+
+    onSignedIn(mapResult(data.session.user, data.session));
+    setEmailActionInFlight(null);
   };
 
   const handleEmailSignIn = async () => {
@@ -316,26 +402,45 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           <form
             onSubmit={async (event) => {
               event.preventDefault();
+              if (isPasswordResetMode) {
+                await handleCompletePasswordReset();
+                return;
+              }
               await handleEmailSignIn();
             }}
             style={{ display: "grid", gap: spacingTokens.sm, marginTop: spacingTokens.xs }}
           >
             <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Email" style={inputStyle(theme)} />
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
+            {isPasswordResetMode ? (
+              <>
+                <input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" placeholder="New password" style={inputStyle(theme)} />
+                <input value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} type="password" placeholder="Confirm new password" style={inputStyle(theme)} />
+                <button type="submit" style={emailButton(theme)} disabled={emailActionInFlight !== null}>
+                  Set new password
+                </button>
+              </>
+            ) : (
+              <>
+                <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
+                <button type="button" style={linkButton(theme)} onClick={handleForgotPassword} disabled={emailActionInFlight !== null}>
+                  Forgot password?
+                </button>
 
-            <div style={{ display: "grid", gap: 6 }}>
-              <button type="submit" style={emailButton(theme)} disabled={emailActionInFlight !== null}>
-                Sign in
-              </button>
-              <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>Already have an account? Sign in with your existing email and password.</small>
-            </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <button type="submit" style={emailButton(theme)} disabled={emailActionInFlight !== null}>
+                    Sign in
+                  </button>
+                  <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>Already have an account? Sign in with your existing email and password.</small>
+                </div>
 
-            <div style={{ display: "grid", gap: 6 }}>
-              <button type="button" style={emailButton(theme)} onClick={handleCreateAccount} disabled={emailActionInFlight !== null}>
-                Create account
-              </button>
-              <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>New here? Create an account with your email and password.</small>
-            </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <button type="button" style={emailButton(theme)} onClick={handleCreateAccount} disabled={emailActionInFlight !== null}>
+                    Create account
+                  </button>
+                  <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>New here? Create an account with your email and password.</small>
+                </div>
+              </>
+            )}
           </form>
         )}
 
@@ -463,6 +568,15 @@ const emailButton = (theme: AppTheme): CSSProperties => ({
   cursor: "pointer",
   width: "min(360px, 100%)",
   justifySelf: "center"
+});
+
+const linkButton = (theme: AppTheme): CSSProperties => ({
+  border: "none",
+  background: "transparent",
+  color: theme.colors.accent,
+  cursor: "pointer",
+  justifySelf: "start",
+  padding: "2px 0"
 });
 
 const socialBaseButton: CSSProperties = {
