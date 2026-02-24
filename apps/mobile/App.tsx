@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
-import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
+import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
 import { mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabaseUserProfileRow } from "@nospoilers/types";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
@@ -68,7 +68,7 @@ const mapUserWithProfile = async (user: User, session: Session): Promise<{ user:
   };
 };
 export default function App() {
-  const [activeTab, setActiveTab] = useState("groups");
+  const [activeTab, setActiveTab] = useState<BottomNavItem["key"]>("groups");
   const [currentUser, setCurrentUser] = useState<AuthUser>();
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [groupStatus, setGroupStatus] = useState<GroupLoadStatus>("loading");
@@ -193,7 +193,7 @@ export default function App() {
           />
         ) : (
           <>
-            {activeTab === "account" ? (
+            {activeTab === "profile" ? (
               <ProfileSettingsScreen
                 user={currentUser}
                 onProfileUpdated={setCurrentUser}
@@ -206,7 +206,7 @@ export default function App() {
                 themePreference={themePreference}
                 onThemePreferenceChanged={setThemePreference}
               />
-            ) : (
+            ) : activeTab === "groups" ? (
               <GroupScreen
                 groups={groups.map((group) => ({
                   id: group.id,
@@ -219,6 +219,17 @@ export default function App() {
                 onCreateGroup={() => setShowCreateGroupSheet(true)}
                 theme={theme}
               />
+            ) : (
+              <View style={[styles.placeholderCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <AppText style={[styles.placeholderTitle, { color: theme.colors.textPrimary }]}>
+                  {activeTab === "for-you" ? "For You" : "Notifications"}
+                </AppText>
+                <AppText style={{ color: theme.colors.textSecondary }}>
+                  {activeTab === "for-you"
+                    ? "Your personalized feed will appear here soon."
+                    : "You are all caught up. Notifications will appear here soon."}
+                </AppText>
+              </View>
             )}
             <BottomTabs activeTab={activeTab} onSelect={setActiveTab} theme={theme} />
             <Modal visible={showCreateGroupSheet} transparent animationType="slide" onRequestClose={() => setShowCreateGroupSheet(false)}>
@@ -245,6 +256,8 @@ const styles = StyleSheet.create({
   configText: { fontSize: 12 },
   authLoadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   authLoadingText: { fontSize: 14 },
+  placeholderCard: { flex: 1, borderWidth: 1, borderRadius: 16, padding: spacingTokens.lg, gap: spacingTokens.sm },
+  placeholderTitle: { fontSize: 18, fontWeight: "700" },
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: spacingTokens.lg },
   modalCard: { borderWidth: 1, borderRadius: 16, padding: spacingTokens.lg, gap: spacingTokens.sm },
   modalTitle: { fontSize: 18, fontWeight: "700" },

@@ -1,10 +1,10 @@
-import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme, type BottomNavItem } from "@nospoilers/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import { AppText } from "./Typography";
 
 type BottomTabsProps = {
-  activeTab: string;
-  onSelect: (key: string) => void;
+  activeTab: BottomNavItem["key"];
+  onSelect: (key: BottomNavItem["key"]) => void;
   theme: AppTheme;
 };
 
