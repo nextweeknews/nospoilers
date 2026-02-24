@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
-import { authService, deleteAccount, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink } from "../services/authClient";
+import { authService, deleteAccount, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink, verifyPhoneChangeOtp } from "../services/authClient";
 
 type ProfileSettingsScreenProps = {
   user?: AuthUser;
@@ -17,6 +17,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   const [username, setUsername] = useState("");
   const [avatarFileName, setAvatarFileName] = useState("avatar.png");
   const [linkPhone, setLinkPhone] = useState("");
+  const [linkPhoneOtp, setLinkPhoneOtp] = useState("");
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -168,6 +169,39 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
           </button>
         </div>
 
+
+        <div style={rowStyle}>
+          <input
+            value={linkPhoneOtp}
+            onChange={(event) => setLinkPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="6-digit SMS code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            style={inputStyle(theme)}
+          />
+          <button
+            style={buttonStyle(theme)}
+            onClick={async () => {
+              if (linkPhoneOtp.length !== 6) {
+                setStatus("Enter the 6-digit code sent to your new phone number.");
+                return;
+              }
+
+              const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp);
+              if (error) {
+                setStatus(error.message);
+                return;
+              }
+
+              await refreshIdentityState();
+              setStatus("Phone linked and verified.");
+              setLinkPhoneOtp("");
+            }}
+          >
+            Verify linked phone
+          </button>
+        </div>
         <button
           style={buttonStyle(theme)}
           onClick={async () => {

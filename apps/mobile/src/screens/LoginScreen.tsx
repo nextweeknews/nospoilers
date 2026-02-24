@@ -66,6 +66,7 @@ const STATUS_TONE_COLORS: Record<StatusTone, string> = {
 
 const TERMS_URL = "https://nospoilers.app/terms";
 const PRIVACY_POLICY_URL = "https://nospoilers.app/privacy-policy";
+const PHONE_OTP_RESEND_COOLDOWN_SECONDS = 60;
 
 const callbackIndicatesRecovery = (url: string): boolean => {
   const parsed = Linking.parse(url);
@@ -80,6 +81,8 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
+  const [resendAvailableAtMs, setResendAvailableAtMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -87,10 +90,29 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
 
+  const phoneDigits = phone.replace(/\D/g, "");
+  const otpDigits = code.replace(/\D/g, "").slice(0, 6);
+  const resendCountdownSeconds = resendAvailableAtMs ? Math.max(0, Math.ceil((resendAvailableAtMs - nowMs) / 1000)) : 0;
+  const canResendOtp = resendCountdownSeconds === 0;
+
   const saveResult = (result: ProviderLoginResult) => {
     onSignedIn(result);
     setStatus({ message: `Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`, tone: "success" });
   };
+
+  useEffect(() => {
+    if (!resendAvailableAtMs) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [resendAvailableAtMs]);
 
   useEffect(() => {
     const handleResetCallback = async (url: string) => {
@@ -219,28 +241,45 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
       <AppTextInput placeholder="Phone number" placeholderTextColor={theme.colors.textSecondary} value={phone} onChangeText={setPhone} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <Pressable
-        style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
+        disabled={challengeStarted && !canResendOtp}
+        style={[styles.primaryButton, { backgroundColor: theme.colors.accent, opacity: challengeStarted && !canResendOtp ? 0.7 : 1 }]}
         onPress={async () => {
-          const { error } = await signInWithOtp(phone);
+          if (!phone.trim().startsWith("+") || phoneDigits.length < 8) {
+            setStatus({ message: "Include country code (for example, +1...).", tone: "error" });
+            return;
+          }
+
+          if (challengeStarted && !canResendOtp) {
+            setStatus({ message: `Please wait ${resendCountdownSeconds}s before requesting another code.`, tone: "info" });
+            return;
+          }
+
+          const { error } = await signInWithOtp(phone.trim());
           if (error) {
             setStatus({ message: error.message, tone: "error" });
             return;
           }
 
           setChallengeStarted(true);
-          setStatus({ message: "SMS verification code sent.", tone: "success" });
+          setResendAvailableAtMs(Date.now() + PHONE_OTP_RESEND_COOLDOWN_SECONDS * 1000);
+          setStatus({ message: "SMS verification code sent. It expires after 60 minutes.", tone: "success" });
         }}
       >
-        <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Send SMS code</AppText>
+        <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>{challengeStarted ? (canResendOtp ? "Resend SMS code" : `Resend in ${resendCountdownSeconds}s`) : "Send SMS code"}</AppText>
       </Pressable>
 
       {challengeStarted ? (
         <>
-          <AppTextInput placeholder="One-time code" placeholderTextColor={theme.colors.textSecondary} value={code} onChangeText={setCode} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+          <AppTextInput placeholder="One-time code" placeholderTextColor={theme.colors.textSecondary} value={code} onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
           <Pressable
             style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
             onPress={async () => {
-              const { data, error } = await verifySmsOtp(phone, code);
+              if (otpDigits.length !== 6) {
+                setStatus({ message: "Enter the 6-digit verification code.", tone: "error" });
+                return;
+              }
+
+              const { data, error } = await verifySmsOtp(phone.trim(), otpDigits);
               if (error || !data.user || !data.session) {
                 setStatus({ message: error?.message ?? "Unable to verify code.", tone: "error" });
                 return;
@@ -255,7 +294,8 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       ) : null}
 
       <Pressable
-        style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
+        disabled={challengeStarted && !canResendOtp}
+        style={[styles.primaryButton, { backgroundColor: theme.colors.accent, opacity: challengeStarted && !canResendOtp ? 0.7 : 1 }]}
         onPress={async () => {
           await handleOAuth();
         }}

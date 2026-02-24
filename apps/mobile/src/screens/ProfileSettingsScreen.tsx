@@ -12,7 +12,8 @@ import {
   linkEmailPasswordIdentity,
   linkGoogleIdentity,
   linkPhoneIdentity,
-  reauthenticateForIdentityLink
+  reauthenticateForIdentityLink,
+  verifyPhoneChangeOtp
 } from "../services/authClient";
 import { AppText, AppTextInput } from "../components/Typography";
 
@@ -29,6 +30,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [linkPhone, setLinkPhone] = useState("");
+  const [linkPhoneOtp, setLinkPhoneOtp] = useState("");
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -178,6 +180,29 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
           <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Link phone</AppText>
         </Pressable>
 
+
+        <AppTextInput value={linkPhoneOtp} onChangeText={(value) => setLinkPhoneOtp(value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit SMS code" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <Pressable
+          style={[styles.button, { backgroundColor: theme.colors.accent }]}
+          onPress={async () => {
+            if (linkPhoneOtp.length !== 6) {
+              setStatus("Enter the 6-digit code sent to your new phone number.");
+              return;
+            }
+
+            const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+
+            await refreshIdentityState();
+            setStatus("Phone linked and verified.");
+            setLinkPhoneOtp("");
+          }}
+        >
+          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Verify linked phone</AppText>
+        </Pressable>
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
