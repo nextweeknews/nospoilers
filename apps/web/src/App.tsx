@@ -108,6 +108,18 @@ export const App = () => {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
 
+  const syncAuthState = async (session: Session | null) => {
+    if (!session?.user) {
+      setCurrentUser(undefined);
+      setNeedsOnboarding(false);
+      return;
+    }
+
+    const mapped = await mapUserWithProfile(session.user, session);
+    setCurrentUser(mapped.user);
+    setNeedsOnboarding(mapped.needsOnboarding);
+  };
+
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {
       return;
@@ -127,30 +139,32 @@ export const App = () => {
 
   useEffect(() => {
     const syncSession = async () => {
-      const { data } = await getSession();
-      if (data.session?.user) {
-        const mapped = await mapUserWithProfile(data.session.user, data.session);
-        setCurrentUser(mapped.user);
-        setNeedsOnboarding(mapped.needsOnboarding);
-      } else {
+      try {
+        const { data, error } = await getSession();
+        if (error) {
+          throw error;
+        }
+
+        await syncAuthState(data.session);
+      } catch (_error) {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
+      } finally {
+        setAuthResolved(true);
       }
-      setAuthResolved(true);
     };
 
     void syncSession();
 
     const { data } = onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const mapped = await mapUserWithProfile(session.user, session);
-        setCurrentUser(mapped.user);
-        setNeedsOnboarding(mapped.needsOnboarding);
-      } else {
+      try {
+        await syncAuthState(session);
+      } catch (_error) {
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
+      } finally {
+        setAuthResolved(true);
       }
-      setAuthResolved(true);
     });
 
     return () => {
