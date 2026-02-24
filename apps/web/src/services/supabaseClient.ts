@@ -3,6 +3,7 @@ import { webConfig } from "../config/env";
 
 const supabaseUrl = webConfig.supabaseUrl;
 const supabaseAnonKey = webConfig.supabaseAnonKey;
+const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
@@ -10,7 +11,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+const resolvedSupabaseUrl = hasSupabaseConfig ? supabaseUrl : "http://127.0.0.1:54321";
+const resolvedSupabaseAnonKey = hasSupabaseConfig ? supabaseAnonKey : "dev-anon-key";
+
+export const supabaseClient = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
   auth: {
     flowType: "pkce",
     persistSession: true,
