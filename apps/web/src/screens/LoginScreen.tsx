@@ -1,7 +1,7 @@
-import { FormEvent, type CSSProperties, useState } from "react";
+import { FormEvent, type CSSProperties, useMemo, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
-import { brandPalette, elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
+import { elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
 import { signInWithGoogle, signInWithOtp, signInWithPassword, signUpWithPassword, verifySmsOtp } from "../services/authClient";
 
 type CountryOption = {
@@ -111,7 +111,9 @@ type LoginScreenProps = {
 };
 
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
+  const [authView, setAuthView] = useState<"phone" | "email">("phone");
   const [selectedCountry, setSelectedCountry] = useState(detectCountryCode);
+  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
   const [formattedPhone, setFormattedPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
@@ -120,6 +122,10 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [status, setStatus] = useState("Enter your number to start.");
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
+  const sortedCountryOptions = useMemo(
+    () => [selectedCountryOption, ...COUNTRY_OPTIONS.filter((option) => option.code !== selectedCountryOption.code)],
+    [selectedCountryOption]
+  );
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
 
@@ -187,91 +193,122 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       </header>
 
       <div style={{ display: "grid", alignContent: "center", gap: spacingTokens.md }}>
-        <form onSubmit={handlePhoneStart} style={{ display: "grid", gap: spacingTokens.sm }}>
-          <label style={{ color: theme.colors.textSecondary }}>
-            Mobile number
-            <div style={phoneInputGroup(theme)}>
-              <select value={selectedCountry} onChange={(event) => setSelectedCountry(event.target.value)} style={countrySelectStyle(theme)} aria-label="Country code">
-                {COUNTRY_OPTIONS.map((option) => (
-                  <option key={`${option.code}-${option.dialCode}`} value={option.code}>
-                    {`${option.flag} ${option.name} (${option.dialCode})`}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={formattedPhone}
-                onChange={(event) => setFormattedPhone(formatPhoneNumber(event.target.value))}
-                placeholder="(555) 123-4567"
-                inputMode="numeric"
-                autoComplete="tel-national"
-                maxLength={14}
-                style={phoneNumberInputStyle(theme)}
-              />
-            </div>
-          </label>
-          <button type="submit" style={smsButton(theme)}>
-            Send SMS code
-          </button>
-        </form>
+        {authView === "phone" ? (
+          <>
+            <form onSubmit={handlePhoneStart} style={{ display: "grid", gap: spacingTokens.sm }}>
+              <label style={{ color: theme.colors.textSecondary }}>
+                Mobile number
+                <div style={phoneInputGroup(theme)}>
+                  <div style={countrySelectWrapper}>
+                    <button type="button" onClick={() => setCountryMenuOpen((open) => !open)} style={countrySelectTrigger(theme)} aria-haspopup="listbox" aria-expanded={countryMenuOpen}>
+                      <span>{selectedCountryOption.flag}</span>
+                      <span>{`(${selectedCountryOption.dialCode})`}</span>
+                    </button>
+                    {countryMenuOpen ? (
+                      <div role="listbox" style={countryMenuStyle(theme)}>
+                        {sortedCountryOptions.map((option) => (
+                          <button
+                            key={`${option.code}-${option.dialCode}`}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedCountry === option.code}
+                            onClick={() => {
+                              setSelectedCountry(option.code);
+                              setCountryMenuOpen(false);
+                            }}
+                            style={countryMenuOption(theme, option.code === selectedCountry)}
+                          >
+                            {`${option.flag} ${option.name} (${option.dialCode})`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <input
+                    value={formattedPhone}
+                    onChange={(event) => setFormattedPhone(formatPhoneNumber(event.target.value))}
+                    placeholder="(555) 123-4567"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={14}
+                    style={phoneNumberInputStyle(theme)}
+                  />
+                </div>
+              </label>
+              <button type="submit" style={smsButton(theme)}>
+                Continue with SMS
+              </button>
+            </form>
 
-        {challengeStarted ? (
-          <form onSubmit={handlePhoneVerify} style={{ display: "grid", gap: spacingTokens.sm }}>
-            <label style={{ color: theme.colors.textSecondary }}>
-              Verification code
-              <input value={smsCode} onChange={(event) => setSmsCode(event.target.value)} placeholder="6-digit code" style={inputStyle(theme)} />
-            </label>
-            <button type="submit" style={smsButton(theme)}>
-              Verify and continue
-            </button>
-          </form>
-        ) : null}
-
-        <small style={{ color: theme.colors.success }}>{status}</small>
-      </div>
-
-      <footer style={{ display: "grid", gap: spacingTokens.sm }}>
-        <button type="button" onClick={handleGoogleOAuth} style={googleButton}>
-          Continue with Google
-        </button>
-        <form
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const { data, error } = await signInWithPassword(email, password);
-            if (error || !data.user || !data.session) {
-              setStatus(error?.message ?? "Unable to sign in with email.");
-              return;
-            }
-
-            onSignedIn(mapResult(data.user, data.session));
-          }}
-          style={{ display: "grid", gap: spacingTokens.sm, marginTop: spacingTokens.xs }}
-        >
-          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Email" style={inputStyle(theme)} />
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
-          <button type="submit" style={emailButton(theme)}>
-            Continue with Email
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              const { data, error } = await signUpWithPassword(email, password);
-              if (error) {
-                setStatus(error.message);
+            {challengeStarted ? (
+              <form onSubmit={handlePhoneVerify} style={{ display: "grid", gap: spacingTokens.sm }}>
+                <label style={{ color: theme.colors.textSecondary }}>
+                  Verification code
+                  <input value={smsCode} onChange={(event) => setSmsCode(event.target.value)} placeholder="6-digit code" style={inputStyle(theme)} />
+                </label>
+                <button type="submit" style={smsButton(theme)}>
+                  Verify and continue
+                </button>
+              </form>
+            ) : null}
+          </>
+        ) : (
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const { data: signInData, error: signInError } = await signInWithPassword(email, password);
+              if (!signInError && signInData.user && signInData.session) {
+                onSignedIn(mapResult(signInData.user, signInData.session));
                 return;
               }
 
-              if (data.user && data.session) {
-                onSignedIn(mapResult(data.user, data.session));
+              const { data: signUpData, error: signUpError } = await signUpWithPassword(email, password);
+              if (signUpError) {
+                setStatus(signUpError.message);
+                return;
+              }
+
+              if (signUpData.user && signUpData.session) {
+                onSignedIn(mapResult(signUpData.user, signUpData.session));
                 return;
               }
 
               setStatus("Check your email to finish sign up.");
             }}
-            style={emailButton(theme)}
+            style={{ display: "grid", gap: spacingTokens.sm, marginTop: spacingTokens.xs }}
           >
-            Sign up with Email
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Email" style={inputStyle(theme)} />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
+            <button type="submit" style={emailButton(theme)}>
+              Log in or sign up
+            </button>
+          </form>
+        )}
+
+        <small style={{ color: theme.colors.success }}>{status}</small>
+      </div>
+
+      <footer style={{ display: "grid", gap: spacingTokens.sm }}>
+        {authView === "phone" ? (
+          <>
+            <button type="button" id="google-signin-btn" aria-label="Sign in with Google" onClick={handleGoogleOAuth} style={googleButton(theme)}>
+              <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z"/>
+                <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.5-5.2l-6.2-5.2C29.3 35.1 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/>
+                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.3 5.4-6 6.9l.1-.1 6.2 5.2C35.2 40.3 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+              </svg>
+              <span>Sign in with Google</span>
+            </button>
+            <button type="button" style={emailButton(theme)} onClick={() => setAuthView("email")}>
+              Continue with Email
+            </button>
+          </>
+        ) : (
+          <button type="button" style={emailButton(theme)} onClick={() => setAuthView("phone")}>
+            Back to phone login
           </button>
-        </form>
+        )}
       </footer>
     </section>
   );
@@ -279,6 +316,8 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
 const inputStyle = (theme: AppTheme): CSSProperties => ({
   width: "100%",
+  boxSizing: "border-box",
+  minWidth: 0,
   marginTop: 6,
   background: theme.colors.surfaceMuted,
   border: `1px solid ${theme.colors.border}`,
@@ -290,17 +329,54 @@ const inputStyle = (theme: AppTheme): CSSProperties => ({
 
 const phoneInputGroup = (theme: AppTheme): CSSProperties => ({
   display: "grid",
-  gridTemplateColumns: "minmax(180px, 1fr) minmax(0, 1fr)",
+  gridTemplateColumns: "minmax(112px, 132px) minmax(0, 1fr)",
   gap: spacingTokens.xs,
   marginTop: 6
 });
 
-const countrySelectStyle = (theme: AppTheme): CSSProperties => ({
+const countrySelectWrapper: CSSProperties = {
+  position: "relative",
+  minWidth: 0
+};
+
+const countrySelectTrigger = (theme: AppTheme): CSSProperties => ({
+  width: "100%",
+  boxSizing: "border-box",
   background: theme.colors.surfaceMuted,
   border: `1px solid ${theme.colors.border}`,
   borderRadius: radiusTokens.md,
   color: theme.colors.textPrimary,
   padding: "12px 10px",
+  fontSize: typographyTokens.size.body,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: spacingTokens.xs
+});
+
+const countryMenuStyle = (theme: AppTheme): CSSProperties => ({
+  position: "absolute",
+  zIndex: 10,
+  top: "calc(100% + 4px)",
+  left: 0,
+  width: "min(320px, 75vw)",
+  maxHeight: 220,
+  overflowY: "auto",
+  background: theme.colors.surface,
+  border: `1px solid ${theme.colors.border}`,
+  borderRadius: radiusTokens.md,
+  boxShadow: elevationTokens.medium,
+  display: "grid"
+});
+
+const countryMenuOption = (theme: AppTheme, selected: boolean): CSSProperties => ({
+  border: "none",
+  background: selected ? theme.colors.surfaceMuted : "transparent",
+  color: theme.colors.textPrimary,
+  textAlign: "left",
+  padding: "10px 12px",
+  cursor: "pointer",
   fontSize: typographyTokens.size.body
 });
 
@@ -337,16 +413,22 @@ const emailButton = (theme: AppTheme): CSSProperties => ({
 const socialBaseButton: CSSProperties = {
   width: "min(360px, 100%)",
   justifySelf: "center",
-  borderRadius: radiusTokens.md,
+  borderRadius: 9999,
   padding: "12px 14px",
-  fontWeight: Number(typographyTokens.weight.semibold),
+  fontWeight: 500,
   fontSize: typographyTokens.size.body,
-  cursor: "pointer"
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 10,
+  lineHeight: "20px",
+  fontFamily: "Roboto, Arial, sans-serif"
 };
 
-const googleButton: CSSProperties = {
+const googleButton = (_theme: AppTheme): CSSProperties => ({
   ...socialBaseButton,
-  border: `1px solid ${brandPalette.slate[300]}`,
+  border: "1px solid #747775",
   background: "#ffffff",
-  color: "#202124"
-};
+  color: "#1f1f1f"
+});
