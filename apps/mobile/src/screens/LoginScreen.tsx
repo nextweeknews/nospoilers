@@ -4,7 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { authClient, authRedirectTo, completeOAuthSession, signInWithGoogle } from "../services/authClient";
+import { authRedirectTo, completeOAuthSession, signInWithGoogle, signInWithOtp, signInWithPassword, signUpWithPassword, verifySmsOtp } from "../services/authClient";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -83,7 +83,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       <Pressable
         style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
         onPress={async () => {
-          const { error } = await authClient.signInWithOtp({ phone });
+          const { error } = await signInWithOtp(phone);
           if (error) {
             setStatus(error.message);
             return;
@@ -102,7 +102,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           <Pressable
             style={[styles.primaryButton, { backgroundColor: theme.colors.accent }]}
             onPress={async () => {
-              const { data, error } = await authClient.verifyOtp({ phone, token: code, type: "sms" });
+              const { data, error } = await verifySmsOtp(phone, code);
               if (error || !data.user || !data.session) {
                 setStatus(error?.message ?? "Unable to verify code.");
                 return;
@@ -139,7 +139,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         <Pressable
           style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
           onPress={async () => {
-            const { data, error } = await authClient.signInWithPassword({ email, password });
+            const { data, error } = await signInWithPassword(email, password);
             if (error || !data.user || !data.session) {
               setStatus(error?.message ?? "Unable to sign in with email.");
               return;
@@ -153,7 +153,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         <Pressable
           style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
           onPress={async () => {
-            const { data, error } = await authClient.signUp({ email, password });
+            const { data, error } = await signUpWithPassword(email, password);
             if (error) {
               setStatus(error.message);
               return;

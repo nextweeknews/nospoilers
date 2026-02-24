@@ -8,6 +8,19 @@ const fallbackRedirectTo = Linking.createURL("auth/callback", {
 });
 
 export const authClient = supabaseClient.auth;
+
+export const getSession = async () => authClient.getSession();
+
+export const onAuthStateChange = (...args: Parameters<typeof authClient.onAuthStateChange>) => authClient.onAuthStateChange(...args);
+
+export const signInWithOtp = async (phone: string) => authClient.signInWithOtp({ phone });
+
+export const verifySmsOtp = async (phone: string, token: string) => authClient.verifyOtp({ phone, token, type: "sms" });
+
+export const signInWithPassword = async (email: string, password: string) => authClient.signInWithPassword({ email, password });
+
+export const signUpWithPassword = async (email: string, password: string) => authClient.signUp({ email, password });
+
 export const authRedirectTo = mobileConfig.supabaseAuthRedirectUrl ?? fallbackRedirectTo;
 
 export const signInWithGoogle = async () =>

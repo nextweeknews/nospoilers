@@ -9,6 +9,7 @@ import { LoginScreen } from "./src/screens/LoginScreen";
 import { ProfileSettingsScreen } from "./src/screens/ProfileSettingsScreen";
 import { OnboardingProfileScreen } from "./src/screens/OnboardingProfileScreen";
 import { mobileConfig } from "./src/config/env";
+import { getSession, onAuthStateChange } from "./src/services/authClient";
 import { supabaseClient } from "./src/services/supabaseClient";
 
 type GroupEntity = {
@@ -51,7 +52,7 @@ export default function App() {
 
   useEffect(() => {
     const syncSession = async () => {
-      const { data } = await supabaseClient.auth.getSession();
+      const { data } = await getSession();
       if (data.session?.user) {
         setCurrentUser(mapUser(data.session.user, data.session));
       } else {
@@ -62,7 +63,7 @@ export default function App() {
 
     void syncSession();
 
-    const { data } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+    const { data } = onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         setCurrentUser(mapUser(session.user, session));
       } else {
