@@ -3,7 +3,15 @@ import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, View, us
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
-import { mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabaseUserProfileRow } from "@nospoilers/types";
+import {
+  mapAvatarPathToUiValue,
+  type SupabaseCatalogProgressUnitRow,
+  type SupabaseGroupRow,
+  type SupabasePostAttachmentInsert,
+  type SupabasePostInsert,
+  type SupabasePostReactionRow,
+  type SupabaseUserProfileRow
+} from "@nospoilers/types";
 import { GroupScreen } from "./src/screens/GroupScreen";
 import { BottomTabs } from "./src/components/BottomTabs";
 import { LoginScreen } from "./src/screens/LoginScreen";
@@ -174,14 +182,14 @@ export default function App() {
     }
 
     void supabaseClient.from("catalog_items").select("id,title").limit(20).then(({ data }) => setCatalogItems((data as Array<{ id: string; title: string }> | null) ?? []));
-    void supabaseClient.from("progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as Array<{ id: string; title: string }> | null) ?? []));
+    void supabaseClient.from("catalog_progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as SupabaseCatalogProgressUnitRow[] | null) ?? []));
 
     void Promise.all([
       supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
-      supabaseClient.from("post_reactions").select("id,reaction,created_at").order("created_at", { ascending: false }).limit(20)
+      supabaseClient.from("post_reactions").select("post_id,user_id,emoji,created_at").order("created_at", { ascending: false }).limit(20)
     ]).then(([comments, reactions]) => {
       const commentEvents = ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `comment-${entry.id}`, type: "Comment", createdAt: entry.created_at, text: entry.body_text ?? "New comment" }));
-      const reactionEvents = ((reactions.data as Array<{ id: string; reaction: string | null; created_at: string }> | null) ?? []).map((entry) => ({ id: `reaction-${entry.id}`, type: "Reaction", createdAt: entry.created_at, text: entry.reaction ?? "New reaction" }));
+      const reactionEvents = ((reactions.data as SupabasePostReactionRow[] | null) ?? []).map((entry) => ({ id: `reaction-${entry.post_id}-${entry.user_id}-${entry.created_at}`, type: "Reaction", createdAt: entry.created_at, text: entry.emoji }));
       setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
     });
   }, [currentUser]);
@@ -299,22 +307,33 @@ export default function App() {
                   return;
                 }
 
-                const { data: inserted, error } = await supabaseClient.from("posts").insert({
-                  author_id: currentUser.id,
+                const postInsert: SupabasePostInsert = {
+                  author_user_id: currentUser.id,
                   body_text: payload.body_text,
-                  public: payload.public,
                   group_id: payload.group_id,
                   catalog_item_id: payload.catalog_item_id,
                   progress_unit_id: payload.progress_unit_id,
                   tenor_gif_id: payload.tenor_gif_id,
-                  tenor_gif_url: payload.tenor_gif_url
-                }).select("id").single();
+                  tenor_gif_url: payload.tenor_gif_url,
+                  has_media: payload.attachments.length > 0,
+                  ...(payload.status ? { status: payload.status } : {})
+                };
+
+                const { data: inserted, error } = await supabaseClient.from("posts").insert(postInsert).select("id").single();
 
                 if (error || !inserted || !payload.attachments.length) {
                   return;
                 }
 
-                await supabaseClient.from("post_attachments").insert(payload.attachments.map((attachment) => ({ post_id: inserted.id, media_url: attachment.url, media_kind: attachment.kind, bytes: attachment.bytes })));
+                const attachmentInserts: SupabasePostAttachmentInsert[] = payload.attachments.map((attachment, index) => ({
+                  post_id: inserted.id,
+                  kind: attachment.kind,
+                  storage_path: attachment.storage_path,
+                  size_bytes: attachment.size_bytes,
+                  sort_order: index
+                }));
+
+                await supabaseClient.from("post_attachments").insert(attachmentInserts);
               }}
             />
           </>

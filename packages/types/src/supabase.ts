@@ -20,6 +20,39 @@ export type SupabasePostRow = {
   created_at: string;
 };
 
+
+export type SupabaseCatalogProgressUnitRow = {
+  id: string;
+  title: string;
+};
+
+export type SupabasePostReactionRow = {
+  post_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+};
+
+export type SupabasePostInsert = {
+  author_user_id: string;
+  body_text: string;
+  group_id: string | null;
+  catalog_item_id: string | null;
+  progress_unit_id: string | null;
+  tenor_gif_id: string | null;
+  tenor_gif_url: string | null;
+  has_media: boolean;
+  status?: string;
+};
+
+export type SupabasePostAttachmentInsert = {
+  post_id: string;
+  kind: "image" | "video";
+  storage_path: string;
+  size_bytes: number;
+  sort_order: number;
+};
+
 export const mapAvatarPathToUiValue = (avatarPath?: string | null): string | undefined => {
   if (!avatarPath) {
     return undefined;
