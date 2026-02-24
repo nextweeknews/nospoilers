@@ -1,23 +1,27 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
-import { authService, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink } from "../services/authClient";
+import { authService, deleteAccount, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink } from "../services/authClient";
 
 type ProfileSettingsScreenProps = {
   user?: AuthUser;
   onProfileUpdated: (user: AuthUser) => void;
+  onAccountDeleted: () => void;
   themePreference: ThemePreference;
   onThemePreferenceChanged: (next: ThemePreference) => void;
   theme: AppTheme;
 };
 
-export const ProfileSettingsScreen = ({ user, onProfileUpdated, themePreference, onThemePreferenceChanged, theme }: ProfileSettingsScreenProps) => {
+export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted, themePreference, onThemePreferenceChanged, theme }: ProfileSettingsScreenProps) => {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [avatarFileName, setAvatarFileName] = useState("avatar.png");
   const [linkPhone, setLinkPhone] = useState("");
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
   const [status, setStatus] = useState("Sign in to manage your profile.");
 
   const identityStatus = useMemo(() => {
@@ -200,6 +204,50 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, themePreference,
         </div>
       </section>
 
+      <section style={{ display: "grid", gap: spacingTokens.xs, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
+        <h3 style={{ margin: 0, color: "#b42318" }}>Delete account</h3>
+        <small style={{ color: theme.colors.textSecondary }}>
+          This action permanently deletes your profile and linked identities, revokes active sessions, and cannot be undone.
+        </small>
+        <input
+          value={deleteConfirmation}
+          onChange={(event) => setDeleteConfirmation(event.target.value)}
+          placeholder='Type "DELETE" to enable'
+          style={inputStyle(theme)}
+        />
+        <button
+          type="button"
+          style={dangerButtonStyle(theme)}
+          disabled={deleteConfirmation !== "DELETE"}
+          onClick={() => {
+            setDeleteError(undefined);
+            setDeleteConfirmOpen(true);
+          }}
+        >
+          Delete account permanently
+        </button>
+        {deleteError ? <small style={{ color: "#b42318" }}>{deleteError}</small> : null}
+      </section>
+
+      {deleteConfirmOpen ? (
+        <div style={{ border: `1px solid ${"#b42318"}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: spacingTokens.sm }}>
+          <strong>Final confirmation</strong>
+          <small style={{ color: theme.colors.textSecondary }}>Are you sure? This permanently removes your account data and signs you out of all devices.</small>
+          <div style={{ display: "flex", gap: spacingTokens.sm }}>
+            <button type="button" style={dangerButtonStyle(theme)} onClick={async () => {
+              const { error } = await deleteAccount();
+              if (error) {
+                setDeleteError(error.message);
+                setDeleteConfirmOpen(false);
+                return;
+              }
+              onAccountDeleted();
+            }}>Yes, delete my account</button>
+            <button type="button" style={buttonStyle(theme)} onClick={() => setDeleteConfirmOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : null}
+
       <small style={{ color: theme.colors.success }}>{status}</small>
     </section>
   );
@@ -236,4 +284,14 @@ const buttonStyle = (theme: AppTheme): CSSProperties => ({
   borderRadius: radiusTokens.sm,
   padding: "10px 12px",
   fontWeight: 600
+});
+
+const dangerButtonStyle = (theme: AppTheme): CSSProperties => ({
+  background: "#b42318",
+  color: "#fff",
+  border: "none",
+  borderRadius: radiusTokens.sm,
+  padding: "10px 12px",
+  fontWeight: 700,
+  opacity: 1
 });
