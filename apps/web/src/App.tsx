@@ -56,6 +56,34 @@ const mapUser = (user: User, session: Session): AuthUser => ({
   preferences: { themePreference: session.user.user_metadata.theme_preference as ThemePreference | undefined }
 });
 
+type ProfileRecord = {
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null): AuthUser => {
+  if (!profile) {
+    return authUser;
+  }
+
+  const username = profile.username?.trim() ? profile.username.trim() : authUser.username;
+
+  return {
+    ...authUser,
+    username,
+    usernameNormalized: username?.toLowerCase() ?? authUser.usernameNormalized,
+    displayName: profile.display_name?.trim() ? profile.display_name.trim() : authUser.displayName,
+    avatarUrl: profile.avatar_url ?? authUser.avatarUrl
+  };
+};
+
+const mapUserWithProfile = async (user: User, session: Session): Promise<AuthUser> => {
+  const mappedUser = mapUser(user, session);
+  const { data: profile } = await supabaseClient.from("profiles").select("username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  return mergeProfileIntoUser(mappedUser, profile as ProfileRecord | null);
+};
+
 export const App = () => {
   const [mainView, setMainView] = useState<MainView>("feed");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -95,7 +123,8 @@ export const App = () => {
     const syncSession = async () => {
       const { data } = await getSession();
       if (data.session?.user) {
-        setCurrentUser(mapUser(data.session.user, data.session));
+        const userWithProfile = await mapUserWithProfile(data.session.user, data.session);
+        setCurrentUser(userWithProfile);
       } else {
         setCurrentUser(undefined);
       }
@@ -106,7 +135,8 @@ export const App = () => {
 
     const { data } = onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        setCurrentUser(mapUser(session.user, session));
+        const userWithProfile = await mapUserWithProfile(session.user, session);
+        setCurrentUser(userWithProfile);
       } else {
         setCurrentUser(undefined);
       }
