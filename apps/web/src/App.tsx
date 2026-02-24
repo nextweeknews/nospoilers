@@ -27,7 +27,13 @@ type PostEntity = {
   created_at: string;
 };
 
-const getSystemMode = (): ThemeMode => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+const getSystemMode = (): ThemeMode => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return "light";
+  }
+
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+};
 
 const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
 
@@ -66,10 +72,20 @@ export const App = () => {
   const [authStatus, setAuthStatus] = useState<string>();
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (event: MediaQueryListEvent) => setSystemMode(event.matches ? "dark" : "light");
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
   }, []);
 
   useEffect(() => {
