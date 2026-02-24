@@ -124,6 +124,9 @@ export const App = () => {
     setNeedsOnboarding(mapped.needsOnboarding);
   };
 
+  const pathname = window.location.pathname;
+  const isAuthCallbackRoute = pathname === "/auth/callback";
+
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {
       return;
@@ -142,35 +145,47 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
+    if (isAuthCallbackRoute) {
+      return;
+    }
+  
+    let cancelled = false;
+  
     const syncSession = async () => {
       try {
         const { data, error } = await getSession();
-        if (error) {
-          throw error;
-        }
-
+        if (error) throw error;
+        if (cancelled) return;
+  
         await syncAuthState(data.session);
       } catch (_error) {
+        if (cancelled) return;
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
       }
     };
-
+  
     void syncSession();
-
-    const { data } = onAuthStateChange(async (_event, session) => {
-      try {
-        await syncAuthState(session);
-      } catch (_error) {
-        setCurrentUser(undefined);
-        setNeedsOnboarding(false);
-      }
+  
+    const { data } = onAuthStateChange((_event, session) => {
+      // Avoid async callback directly in onAuthStateChange; defer async work.
+      void (async () => {
+        try {
+          if (cancelled) return;
+          await syncAuthState(session);
+        } catch (_error) {
+          if (cancelled) return;
+          setCurrentUser(undefined);
+          setNeedsOnboarding(false);
+        }
+      })();
     });
-
+  
     return () => {
+      cancelled = true;
       data.subscription.unsubscribe();
     };
-  }, []);
+  }, [isAuthCallbackRoute]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -275,7 +290,6 @@ export const App = () => {
   };
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
-  const pathname = window.location.pathname;
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
