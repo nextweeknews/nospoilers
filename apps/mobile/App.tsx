@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
+import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, TextInput, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
@@ -89,6 +89,11 @@ export default function App() {
   const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
+  const [createGroupName, setCreateGroupName] = useState("");
+  const [createGroupDescription, setCreateGroupDescription] = useState("");
+  const [createGroupPrivacy, setCreateGroupPrivacy] = useState<"public" | "private">("private");
+  const [createGroupError, setCreateGroupError] = useState<string>();
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [catalogItems, setCatalogItems] = useState<Array<{ id: string; title: string }>>([]);
@@ -212,6 +217,71 @@ export default function App() {
     setAuthResolved(true);
   };
 
+  const resetCreateGroupSheet = () => {
+    setCreateGroupName("");
+    setCreateGroupDescription("");
+    setCreateGroupPrivacy("private");
+    setCreateGroupError(undefined);
+    setIsCreatingGroup(false);
+  };
+
+  const closeCreateGroupSheet = () => {
+    setShowCreateGroupSheet(false);
+    resetCreateGroupSheet();
+  };
+
+  const handleCreateGroup = async () => {
+    if (!currentUser || isCreatingGroup) {
+      return;
+    }
+
+    const normalizedName = createGroupName.trim();
+    const normalizedDescription = createGroupDescription.trim();
+
+    if (!normalizedName) {
+      setCreateGroupError("Group name is required.");
+      return;
+    }
+
+    setCreateGroupError(undefined);
+    setIsCreatingGroup(true);
+
+    const { data: insertedGroup, error: groupInsertError } = await supabaseClient
+      .from("groups")
+      .insert({
+        name: normalizedName,
+        description: normalizedDescription || null,
+        privacy: createGroupPrivacy,
+        created_by: currentUser.id
+      })
+      .select("id,name,description,avatar_path")
+      .single();
+
+    if (groupInsertError || !insertedGroup) {
+      setCreateGroupError(groupInsertError?.message ?? "Unable to create group.");
+      setIsCreatingGroup(false);
+      return;
+    }
+
+    const { error: membershipInsertError } = await supabaseClient.from("group_memberships").insert({
+      user_id: currentUser.id,
+      group_id: insertedGroup.id,
+      role: "owner",
+      status: "active"
+    });
+
+    if (membershipInsertError) {
+      await supabaseClient.from("groups").delete().eq("id", insertedGroup.id);
+      setCreateGroupError(membershipInsertError.message);
+      setIsCreatingGroup(false);
+      return;
+    }
+
+    setGroups((prev) => [insertedGroup as GroupEntity, ...prev]);
+    setGroupStatus("ready");
+    closeCreateGroupSheet();
+  };
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.container, { padding: spacingTokens.lg }]}>
@@ -284,13 +354,59 @@ export default function App() {
               <NotificationsScreen theme={theme} events={notifications} />
             )}
             <BottomTabs activeTab={activeTab} onSelect={setActiveTab} theme={theme} />
-            <Modal visible={showCreateGroupSheet} transparent animationType="slide" onRequestClose={() => setShowCreateGroupSheet(false)}>
+            <Modal visible={showCreateGroupSheet} transparent animationType="slide" onRequestClose={closeCreateGroupSheet}>
               <View style={styles.modalBackdrop}>
                 <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                   <AppText style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Create group</AppText>
-                  <AppText style={[styles.modalBody, { color: theme.colors.textSecondary }]}>This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.</AppText>
-                  <Pressable onPress={() => setShowCreateGroupSheet(false)} style={[styles.modalButton, { backgroundColor: theme.colors.accent }]}>
-                    <AppText style={{ color: theme.colors.accentText, fontWeight: "700" }}>Close</AppText>
+                  <AppText style={[styles.modalFieldLabel, { color: theme.colors.textSecondary }]}>Name</AppText>
+                  <TextInput
+                    value={createGroupName}
+                    onChangeText={setCreateGroupName}
+                    placeholder="Book Club"
+                    placeholderTextColor={theme.colors.textSecondary}
+                    maxLength={80}
+                    style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+                  />
+                  <AppText style={[styles.modalFieldLabel, { color: theme.colors.textSecondary }]}>Description</AppText>
+                  <TextInput
+                    value={createGroupDescription}
+                    onChangeText={setCreateGroupDescription}
+                    placeholder="What is this group about?"
+                    placeholderTextColor={theme.colors.textSecondary}
+                    multiline
+                    numberOfLines={3}
+                    maxLength={240}
+                    style={[styles.modalInput, styles.modalTextarea, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+                  />
+                  <AppText style={[styles.modalFieldLabel, { color: theme.colors.textSecondary }]}>Privacy</AppText>
+                  <View style={styles.modalPrivacyRow}>
+                    {(["private", "public"] as const).map((privacyValue) => {
+                      const selected = createGroupPrivacy === privacyValue;
+                      return (
+                        <Pressable
+                          key={privacyValue}
+                          onPress={() => setCreateGroupPrivacy(privacyValue)}
+                          style={[
+                            styles.modalPrivacyOption,
+                            {
+                              borderColor: selected ? theme.colors.accent : theme.colors.border,
+                              backgroundColor: selected ? theme.colors.accent : theme.colors.surfaceMuted
+                            }
+                          ]}
+                        >
+                          <AppText style={{ color: selected ? theme.colors.accentText : theme.colors.textPrimary, fontWeight: "600" }}>
+                            {privacyValue === "private" ? "Private" : "Public"}
+                          </AppText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {createGroupError ? <AppText style={[styles.modalError, { color: "#b42318" }]}>{createGroupError}</AppText> : null}
+                  <Pressable onPress={() => void handleCreateGroup()} disabled={isCreatingGroup} style={[styles.modalButton, { backgroundColor: theme.colors.accent, opacity: isCreatingGroup ? 0.7 : 1 }]}>
+                    <AppText style={{ color: theme.colors.accentText, fontWeight: "700" }}>{isCreatingGroup ? "Creating…" : "Create group"}</AppText>
+                  </Pressable>
+                  <Pressable onPress={closeCreateGroupSheet} style={[styles.modalButtonSecondary, { borderColor: theme.colors.border }]}>
+                    <AppText style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>Cancel</AppText>
                   </Pressable>
                 </View>
               </View>
@@ -358,6 +474,12 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: spacingTokens.lg },
   modalCard: { borderWidth: 1, borderRadius: 16, padding: spacingTokens.lg, gap: spacingTokens.sm },
   modalTitle: { fontSize: 18, fontWeight: "700" },
-  modalBody: { fontSize: 14 },
-  modalButton: { borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: spacingTokens.sm }
+  modalFieldLabel: { fontSize: 13, fontWeight: "600" },
+  modalInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  modalTextarea: { minHeight: 88, textAlignVertical: "top" },
+  modalPrivacyRow: { flexDirection: "row", gap: spacingTokens.sm },
+  modalPrivacyOption: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: "center" },
+  modalError: { fontSize: 13 },
+  modalButton: { borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: spacingTokens.sm },
+  modalButtonSecondary: { borderRadius: 12, borderWidth: 1, paddingVertical: 12, alignItems: "center" }
 });

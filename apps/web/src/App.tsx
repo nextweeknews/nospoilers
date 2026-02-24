@@ -133,6 +133,11 @@ export const App = () => {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
+  const [createGroupName, setCreateGroupName] = useState("");
+  const [createGroupDescription, setCreateGroupDescription] = useState("");
+  const [createGroupPrivacy, setCreateGroupPrivacy] = useState<"public" | "private">("private");
+  const [createGroupError, setCreateGroupError] = useState<string>();
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [catalogItems, setCatalogItems] = useState<OptionRow[]>([]);
@@ -385,6 +390,71 @@ export const App = () => {
     await signOut();
     setCurrentUser(undefined);
     setNeedsOnboarding(false);
+  };
+
+  const resetCreateGroupModal = () => {
+    setCreateGroupName("");
+    setCreateGroupDescription("");
+    setCreateGroupPrivacy("private");
+    setCreateGroupError(undefined);
+    setIsCreatingGroup(false);
+  };
+
+  const closeCreateGroupModal = () => {
+    setShowCreateGroupSheet(false);
+    resetCreateGroupModal();
+  };
+
+  const handleCreateGroup = async () => {
+    if (!currentUser || isCreatingGroup) {
+      return;
+    }
+
+    const normalizedName = createGroupName.trim();
+    const normalizedDescription = createGroupDescription.trim();
+
+    if (!normalizedName) {
+      setCreateGroupError("Group name is required.");
+      return;
+    }
+
+    setCreateGroupError(undefined);
+    setIsCreatingGroup(true);
+
+    const { data: insertedGroup, error: groupInsertError } = await supabaseClient
+      .from("groups")
+      .insert({
+        name: normalizedName,
+        description: normalizedDescription || null,
+        privacy: createGroupPrivacy,
+        created_by: currentUser.id
+      })
+      .select("id,name,description,avatar_path")
+      .single();
+
+    if (groupInsertError || !insertedGroup) {
+      setCreateGroupError(groupInsertError?.message ?? "Unable to create group.");
+      setIsCreatingGroup(false);
+      return;
+    }
+
+    const { error: membershipInsertError } = await supabaseClient.from("group_memberships").insert({
+      user_id: currentUser.id,
+      group_id: insertedGroup.id,
+      role: "owner",
+      status: "active"
+    });
+
+    if (membershipInsertError) {
+      await supabaseClient.from("groups").delete().eq("id", insertedGroup.id);
+      setCreateGroupError(membershipInsertError.message);
+      setIsCreatingGroup(false);
+      return;
+    }
+
+    setGroups((prev) => [insertedGroup as GroupEntity, ...prev]);
+    setGroupStatus("ready");
+    closeCreateGroupModal();
   };
 
   if (pathname === "/auth/callback") {
@@ -731,12 +801,43 @@ export const App = () => {
             }}
           >
             <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create group</h3>
-            <p style={{ margin: 0, color: theme.colors.textSecondary }}>
-              This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.
-            </p>
+            <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 14 }}>
+              Name
+              <input
+                value={createGroupName}
+                onChange={(event) => setCreateGroupName(event.target.value)}
+                placeholder="Book Club"
+                maxLength={80}
+                style={{ borderRadius: radiusTokens.md, border: `1px solid ${theme.colors.border}`, padding: "10px 12px" }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 14 }}>
+              Description
+              <textarea
+                value={createGroupDescription}
+                onChange={(event) => setCreateGroupDescription(event.target.value)}
+                placeholder="What is this group about?"
+                rows={4}
+                maxLength={240}
+                style={{ borderRadius: radiusTokens.md, border: `1px solid ${theme.colors.border}`, padding: "10px 12px", resize: "vertical" }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 14 }}>
+              Privacy
+              <select
+                value={createGroupPrivacy}
+                onChange={(event) => setCreateGroupPrivacy(event.target.value as "public" | "private")}
+                style={{ borderRadius: radiusTokens.md, border: `1px solid ${theme.colors.border}`, padding: "10px 12px" }}
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </label>
+            {createGroupError ? <p style={{ margin: 0, color: "#b42318" }}>{createGroupError}</p> : null}
             <button
               type="button"
-              onClick={() => setShowCreateGroupSheet(false)}
+              onClick={() => void handleCreateGroup()}
+              disabled={isCreatingGroup}
               style={{
                 border: "none",
                 borderRadius: radiusTokens.md,
@@ -744,10 +845,25 @@ export const App = () => {
                 background: theme.colors.accent,
                 color: theme.colors.accentText,
                 fontWeight: 700,
+                cursor: isCreatingGroup ? "not-allowed" : "pointer",
+                opacity: isCreatingGroup ? 0.7 : 1
+              }}
+            >
+              {isCreatingGroup ? "Creating…" : "Create group"}
+            </button>
+            <button
+              type="button"
+              onClick={closeCreateGroupModal}
+              style={{
+                borderRadius: radiusTokens.md,
+                border: `1px solid ${theme.colors.border}`,
+                padding: "10px 14px",
+                background: "transparent",
+                color: theme.colors.textPrimary,
                 cursor: "pointer"
               }}
             >
-              Close
+              Cancel
             </button>
           </div>
         </div>
