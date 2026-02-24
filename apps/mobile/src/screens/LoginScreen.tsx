@@ -51,6 +51,19 @@ type LoginScreenProps = {
   theme: AppTheme;
 };
 
+type StatusTone = "info" | "success" | "error";
+
+type LoginStatus = {
+  message: string;
+  tone: StatusTone;
+};
+
+const STATUS_TONE_COLORS: Record<StatusTone, string> = {
+  info: "#475569",
+  success: "#166534",
+  error: "#b91c1c"
+};
+
 const callbackIndicatesRecovery = (url: string): boolean => {
   const parsed = Linking.parse(url);
   const params = ("params" in parsed && parsed.params ? parsed.params : {}) as Record<string, unknown>;
@@ -68,12 +81,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [status, setStatus] = useState("Not signed in");
+  const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
 
   const saveResult = (result: ProviderLoginResult) => {
     onSignedIn(result);
-    setStatus(`Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`);
+    setStatus({ message: `Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`, tone: "success" });
   };
 
   useEffect(() => {
@@ -84,12 +97,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
       const { error } = await completeOAuthSession(url);
       if (error) {
-        setStatus(`Password reset link could not be completed. ${error.message}`);
+        setStatus({ message: `Password reset link could not be completed. ${error.message}`, tone: "error" });
         return;
       }
 
       setIsPasswordResetMode(true);
-      setStatus("Enter a new password to finish resetting your password.");
+      setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
     };
 
     void Linking.getInitialURL().then((url) => {
@@ -105,7 +118,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     const { data: authListener } = onAuthStateChange(async (event) => {
       if (event === "PASSWORD_RECOVERY") {
         setIsPasswordResetMode(true);
-        setStatus("Enter a new password to finish resetting your password.");
+        setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
       }
     });
 
@@ -119,20 +132,20 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     const { data, error } = await signInWithGoogle();
 
     if (error || !data.url) {
-      setStatus(error?.message ?? "Unable to start OAuth flow.");
+      setStatus({ message: error?.message ?? "Unable to start OAuth flow.", tone: "error" });
       return;
     }
 
     const authResult = await WebBrowser.openAuthSessionAsync(data.url, authRedirectTo);
     if (authResult.type !== "success" || !authResult.url) {
-      setStatus("OAuth sign-in cancelled.");
+      setStatus({ message: "OAuth sign-in cancelled.", tone: "info" });
       return;
     }
 
     const { data: sessionData, error: sessionError } = await completeOAuthSession(authResult.url);
 
     if (sessionError || !sessionData.session || !sessionData.user) {
-      setStatus(sessionError?.message ?? "Unable to finalize OAuth login.");
+      setStatus({ message: sessionError?.message ?? "Unable to finalize OAuth login.", tone: "error" });
       return;
     }
 
@@ -141,40 +154,40 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      setStatus("Enter your email, then tap Forgot password?.");
+      setStatus({ message: "Enter your email, then tap Forgot password?.", tone: "error" });
       return;
     }
 
     const { error } = await requestPasswordReset(email.trim());
     if (error) {
-      setStatus(`Unable to send reset email. ${error.message}`);
+      setStatus({ message: `Unable to send reset email. ${error.message}`, tone: "error" });
       return;
     }
 
-    setStatus("If an account exists for that email, check your email for password reset instructions.");
+    setStatus({ message: "If an account exists for that email, check your email for password reset instructions.", tone: "success" });
   };
 
   const handleCompletePasswordReset = async () => {
     if (newPassword.length < 8) {
-      setStatus("Use at least 8 characters for your new password.");
+      setStatus({ message: "Use at least 8 characters for your new password.", tone: "error" });
       return;
     }
 
     if (newPassword !== confirmNewPassword) {
-      setStatus("New passwords do not match.");
+      setStatus({ message: "New passwords do not match.", tone: "error" });
       return;
     }
 
     const { error } = await updateCurrentUserPassword(newPassword);
     if (error) {
-      setStatus(`Unable to update password. ${error.message}`);
+      setStatus({ message: `Unable to update password. ${error.message}`, tone: "error" });
       return;
     }
 
     const { data, error: sessionError } = await getSession();
     if (sessionError || !data.session?.user) {
       setIsPasswordResetMode(false);
-      setStatus("Password updated. Sign in with your new password.");
+      setStatus({ message: "Password updated. Sign in with your new password.", tone: "success" });
       return;
     }
 
@@ -192,12 +205,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         onPress={async () => {
           const { error } = await signInWithOtp(phone);
           if (error) {
-            setStatus(error.message);
+            setStatus({ message: error.message, tone: "error" });
             return;
           }
 
           setChallengeStarted(true);
-          setStatus("SMS verification code sent.");
+          setStatus({ message: "SMS verification code sent.", tone: "success" });
         }}
       >
         <AppText style={[styles.primaryText, { color: theme.colors.accentText }]}>Send SMS code</AppText>
@@ -211,7 +224,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
             onPress={async () => {
               const { data, error } = await verifySmsOtp(phone, code);
               if (error || !data.user || !data.session) {
-                setStatus(error?.message ?? "Unable to verify code.");
+                setStatus({ message: error?.message ?? "Unable to verify code.", tone: "error" });
                 return;
               }
 
@@ -275,7 +288,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               onPress={async () => {
                 const { data, error } = await signInWithPassword(email, password);
                 if (error || !data.user || !data.session) {
-                  setStatus(error?.message ?? "Unable to sign in with email.");
+                  setStatus({ message: error?.message ?? "Unable to sign in with email.", tone: "error" });
                   return;
                 }
 
@@ -289,7 +302,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               onPress={async () => {
                 const { data, error } = await signUpWithPassword(email, password);
                 if (error) {
-                  setStatus(error.message);
+                  setStatus({ message: error.message, tone: "error" });
                   return;
                 }
 
@@ -298,7 +311,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                   return;
                 }
 
-                setStatus("Check your email to finish sign up.");
+                setStatus({ message: "Check your email to finish sign up.", tone: "success" });
               }}
             >
               <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</AppText>
@@ -307,7 +320,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         )}
       </View>
 
-      <AppText style={[styles.status, { color: theme.colors.success }]}>{status}</AppText>
+      <AppText style={[styles.status, { color: STATUS_TONE_COLORS[status.tone] }]}>{status.message}</AppText>
     </View>
   );
 };
