@@ -32,7 +32,12 @@ const validateUsername = (value: string): UsernameFeedback => {
   return { tone: "neutral", message: "" };
 };
 
-export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
+export const OnboardingProfileScreen = ({
+  user,
+  theme,
+  onProfileCompleted,
+  onChooseDifferentLoginMethod
+}: OnboardingProfileScreenProps) => {
   const defaultStatus = "Finish your profile to continue.";
   const [step, setStep] = useState<1 | 2>(1);
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
@@ -62,23 +67,27 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
       return;
     }
 
+    // Clear stale feedback while user is typing and before the debounced check runs.
     setCheckingUsername(false);
+    setUsernameFeedback({ tone: "neutral", message: "" });
+
     const timeout = window.setTimeout(() => {
       setCheckingUsername(true);
+
       void (async () => {
         const availability = await checkUsernameAvailability(normalized);
 
-        if (!active) {
-          return;
-        }
+        if (!active) return;
 
         setCheckingUsername(false);
-        const unavailable = !availability.available && normalized !== user.usernameNormalized;
 
         if (availability.error) {
           setUsernameFeedback({ tone: "error", message: "Could not check username right now." });
           return;
         }
+
+        const isCurrentUsersUsername = normalized === (user.usernameNormalized ?? "");
+        const unavailable = !availability.available && !isCurrentUsersUsername;
 
         if (unavailable) {
           setUsernameFeedback({ tone: "error", message: "This username is not available." });
@@ -115,12 +124,14 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
 
     try {
       const availability = await checkUsernameAvailability(nextUsername);
+
       if (availability.error) {
         setFieldErrors((prev) => ({ ...prev, general: "Could not check username right now." }));
         return;
       }
 
-      if (!availability.available && nextUsername !== user.usernameNormalized) {
+      const isCurrentUsersUsername = nextUsername === (user.usernameNormalized ?? "");
+      if (!availability.available && !isCurrentUsersUsername) {
         setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
         return;
       }
@@ -212,7 +223,16 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
               style={inputStyle(theme)}
             />
             {fieldErrors.username ? <small style={{ color: "#d14343" }}>{fieldErrors.username}</small> : null}
-            <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
+            <small
+              style={{
+                color:
+                  usernameFeedback.tone === "error"
+                    ? "#d14343"
+                    : usernameFeedback.tone === "success"
+                      ? theme.colors.success
+                      : theme.colors.textSecondary
+              }}
+            >
               {checkingUsername ? "Checking availability…" : usernameFeedback.message}
             </small>
           </label>
@@ -250,7 +270,12 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
         <>
           <label style={labelStyle(theme)}>
             Display name (optional)
-            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="Display name"
+              style={inputStyle(theme)}
+            />
           </label>
 
           <input
@@ -285,8 +310,12 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
             }}
           >
             <strong style={{ color: theme.colors.textPrimary }}>Upload avatar (optional)</strong>
-            <span style={{ color: theme.colors.textSecondary }}>Drag and drop an image here, or click to upload from your computer.</span>
-            <small style={{ color: theme.colors.textSecondary }}>Selected: {avatarFileName ?? "No file selected. Using placeholder avatar."}</small>
+            <span style={{ color: theme.colors.textSecondary }}>
+              Drag and drop an image here, or click to upload from your computer.
+            </span>
+            <small style={{ color: theme.colors.textSecondary }}>
+              Selected: {avatarFileName ?? "No file selected. Using placeholder avatar."}
+            </small>
           </div>
 
           <button type="button" style={buttonStyle(theme)} disabled={saving} onClick={() => void submitProfile(false)}>
