@@ -19,7 +19,15 @@ type UsernameFeedback = {
 };
 
 const validateUsername = (value: string): UsernameFeedback => {
-  if (value.length < 3 || value.length > 16) {
+  if (!value) {
+    return { tone: "neutral", message: "" };
+  }
+
+  if (value.length < 3) {
+    return { tone: "error", message: "Usernames must be 3+ characters." };
+  }
+
+  if (value.length > 16) {
     return { tone: "error", message: "Usernames must be 3-16 characters." };
   }
 
@@ -37,16 +45,35 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     let active = true;
     const normalized = username.trim().toLowerCase();
     const localValidation = validateUsername(normalized);
-    if (!normalized || localValidation.tone === "error") {
+    if (!normalized) {
+      setUsernameFeedback({ tone: "neutral", message: "" });
+      return;
+    }
+
+    if (normalized.length < 3) {
+      const timeout = setTimeout(() => {
+        if (!active) {
+          return;
+        }
+
+        setUsernameFeedback(validateUsername(normalized));
+      }, 100);
+
+      return () => {
+        active = false;
+        clearTimeout(timeout);
+      };
+    }
+
+    if (localValidation.tone === "error") {
       setUsernameFeedback(localValidation);
       return;
     }
 
-
     void (async () => {
       const [availability, dbResult] = await Promise.all([
         authService.checkUsernameAvailability(normalized),
-        supabaseClient.from("profiles").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
+        supabaseClient.from("users").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
       ]);
 
       if (!active) {
@@ -111,6 +138,23 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
               displayName: nextDisplayName || nextUsername,
               username: nextUsername
             });
+
+            const { error: userUpsertError } = await supabaseClient.from("users").upsert(
+              {
+                id: user.id,
+                username: nextUsername,
+                display_name: nextDisplayName || nextUsername,
+                email: user.email ?? null,
+                avatar_url: updatedUser.avatarUrl ?? null,
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: "id" }
+            );
+
+            if (userUpsertError) {
+              setStatus(userUpsertError.message);
+              return;
+            }
 
             const completedUser: AuthUser = updatedUser.username
               ? updatedUser
