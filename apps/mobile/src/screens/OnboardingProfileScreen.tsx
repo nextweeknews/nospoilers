@@ -19,22 +19,11 @@ type UsernameFeedback = {
 };
 
 const validateUsername = (value: string): UsernameFeedback => {
-  if (!value) {
-    return { tone: "neutral", message: "Username must be at least 3 characters." };
+  if (value.length < 3 || value.length > 16) {
+    return { tone: "error", message: "Usernames must be 3-16 characters." };
   }
-  if (value.length < 3) {
-    return { tone: "error", message: "Usernames must be 3 characters." };
-  }
-  if (value.length > 16) {
-    return { tone: "error", message: "Usernames must be 16 characters or fewer." };
-  }
-  if (!/^[a-z0-9.]+$/.test(value)) {
-    return { tone: "error", message: "Usernames must contain only letters, numbers, and periods." };
-  }
-  if (value.includes("..")) {
-    return { tone: "error", message: "Usernames may not contain consecutive periods." };
-  }
-  return { tone: "neutral", message: "Checking username availability..." };
+
+  return { tone: "neutral", message: "" };
 };
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
@@ -42,16 +31,17 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
   const [status, setStatus] = useState("Finish profile setup to continue.");
   const [saving, setSaving] = useState(false);
-  const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "Username must be at least 3 characters." });
+  const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "" });
 
   useEffect(() => {
     let active = true;
     const normalized = username.trim().toLowerCase();
     const localValidation = validateUsername(normalized);
-    if (localValidation.tone === "error" || !normalized) {
+    if (!normalized || localValidation.tone === "error") {
       setUsernameFeedback(localValidation);
       return;
     }
+
 
     const timeout = setTimeout(() => {
       void (async () => {
@@ -86,8 +76,8 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>Complete your profile</AppText>
       <AppText style={{ color: theme.colors.textSecondary }}>Add a username before entering NoSpoilers. Display name is optional and defaults to your username.</AppText>
-      <AppTextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <AppTextInput value={username} onChangeText={(value) => setUsername(value.toLowerCase())} placeholder="Username" placeholderTextColor={theme.colors.textSecondary} autoCapitalize="none" maxLength={16} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+      <AppTextInput value={displayName} onChangeText={setDisplayName} placeholder="Display name (optional)" placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
       <AppText style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>{usernameFeedback.message}</AppText>
 
       <Pressable

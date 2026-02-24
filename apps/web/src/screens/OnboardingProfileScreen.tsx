@@ -19,27 +19,11 @@ type UsernameFeedback = {
 const isBlank = (value?: string): boolean => !value || value.trim().length === 0;
 
 const validateUsername = (value: string): UsernameFeedback => {
-  if (!value) {
-    return { tone: "neutral", message: "Username must be at least 3 characters." };
+  if (value.length < 3 || value.length > 16) {
+    return { tone: "error", message: "Usernames must be 3-16 characters." };
   }
 
-  if (value.length < 3) {
-    return { tone: "error", message: "Usernames must be 3 characters." };
-  }
-
-  if (value.length > 16) {
-    return { tone: "error", message: "Usernames must be 16 characters or fewer." };
-  }
-
-  if (!/^[a-z0-9.]+$/.test(value)) {
-    return { tone: "error", message: "Usernames must contain only letters, numbers, and periods." };
-  }
-
-  if (value.includes("..")) {
-    return { tone: "error", message: "Usernames may not contain consecutive periods." };
-  }
-
-  return { tone: "neutral", message: "Checking username availability..." };
+  return { tone: "neutral", message: "" };
 };
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
@@ -49,21 +33,17 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("Finish your profile to continue.");
   const [saving, setSaving] = useState(false);
-  const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "Username must be at least 3 characters." });
+  const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "" });
 
   useEffect(() => {
     let active = true;
     const normalized = username.trim().toLowerCase();
     const localValidation = validateUsername(normalized);
-    if (localValidation.tone === "error") {
+    if (!normalized || localValidation.tone === "error") {
       setUsernameFeedback(localValidation);
       return;
     }
 
-    if (!normalized) {
-      setUsernameFeedback(localValidation);
-      return;
-    }
 
     const runCheck = async () => {
       const [availability, dbResult] = await Promise.all([
@@ -104,16 +84,16 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
       </p>
 
       <label style={labelStyle(theme)}>
-        Display name
-        <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
-      </label>
-
-      <label style={labelStyle(theme)}>
         Username
         <input value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} placeholder="Username" maxLength={16} style={inputStyle(theme)} />
         <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
           {usernameFeedback.message}
         </small>
+      </label>
+
+      <label style={labelStyle(theme)}>
+        Display name (optional)
+        <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
       </label>
 
       <input
