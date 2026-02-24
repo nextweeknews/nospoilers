@@ -1,4 +1,5 @@
 import type { DeleteAccountResponse } from "@nospoilers/types";
+import type { AuthUser, AvatarMeta, AvatarUploadPlan, AvatarUploadRequest, UsernameAvailability } from "../../../../services/auth/src";
 import { webConfig } from "../config/env";
 import { supabaseClient } from "./supabaseClient";
 
@@ -78,5 +79,67 @@ export const deleteAccount = async (): Promise<{ data: DeleteAccountResponse | n
 
 export const signOut = async () => authClient.signOut();
 
-// Backward-compatible alias while migration is in progress.
-export const authService: any = supabaseClient;
+type UpdateProfileInput = {
+  displayName?: string;
+  username?: string;
+  themePreference?: "system" | "light" | "dark";
+};
+
+const buildApiUrl = (path: string): string => `${webConfig.apiBaseUrl}${path}`;
+
+const getAccessToken = async (): Promise<string> => {
+  const { data, error } = await authClient.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error(error?.message ?? "Missing auth session.");
+  }
+
+  return data.session.access_token;
+};
+
+const callAuthApi = async <TResponse>(path: string, init?: RequestInit): Promise<TResponse> => {
+  const accessToken = await getAccessToken();
+  const response = await fetch(buildApiUrl(path), {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      ...(init?.headers ?? {})
+    }
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `Request failed with status ${response.status}`);
+  }
+
+  return (await response.json()) as TResponse;
+};
+
+export const authService = {
+  checkUsernameAvailability: async (username: string): Promise<UsernameAvailability> =>
+    callAuthApi<UsernameAvailability>(`/auth/usernames/availability?username=${encodeURIComponent(username)}`),
+
+  reserveUsername: async (username: string, userId: string): Promise<UsernameAvailability> =>
+    callAuthApi<UsernameAvailability>(`/auth/users/${encodeURIComponent(userId)}/username-reservation`, {
+      method: "POST",
+      body: JSON.stringify({ username })
+    }),
+
+  updateProfile: async (userId: string, updates: UpdateProfileInput): Promise<AuthUser> =>
+    callAuthApi<AuthUser>(`/auth/users/${encodeURIComponent(userId)}/profile`, {
+      method: "PATCH",
+      body: JSON.stringify(updates)
+    }),
+
+  createAvatarUploadPlan: async (userId: string, request: AvatarUploadRequest): Promise<AvatarUploadPlan> =>
+    callAuthApi<AvatarUploadPlan>(`/auth/users/${encodeURIComponent(userId)}/avatar-upload-plan`, {
+      method: "POST",
+      body: JSON.stringify(request)
+    }),
+
+  finalizeAvatarUpload: async (userId: string, uploadId: string, metadata: AvatarMeta): Promise<AuthUser> =>
+    callAuthApi<AuthUser>(`/auth/users/${encodeURIComponent(userId)}/avatar-upload-plan/${encodeURIComponent(uploadId)}/finalize`, {
+      method: "POST",
+      body: JSON.stringify({ metadata })
+    })
+};

@@ -179,8 +179,16 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
               });
             }
 
+            const completedUser: AuthUser = updatedUser.username
+              ? updatedUser
+              : {
+                  ...updatedUser,
+                  username: nextUsername,
+                  usernameNormalized: nextUsername
+                };
+
             setStatus("Profile complete. Redirecting to the app…");
-            onProfileCompleted(updatedUser);
+            onProfileCompleted(completedUser);
           } finally {
             setSaving(false);
           }
