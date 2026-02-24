@@ -259,7 +259,7 @@ export const App = () => {
     }
 
     void supabaseClient.from("catalog_items").select("id,title").limit(20).then(({ data }) => setCatalogItems((data as OptionRow[] | null) ?? []));
-    void supabaseClient.from("progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as OptionRow[] | null) ?? []));
+    void supabaseClient.from("catalog_progress_units").select("id,title").limit(20).then(({ data }) => setProgressUnits((data as OptionRow[] | null) ?? []));
 
     void Promise.all([
       supabaseClient.from("post_comments").select("id,body_text,created_at").order("created_at", { ascending: false }).limit(20),
