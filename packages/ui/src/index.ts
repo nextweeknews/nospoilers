@@ -97,15 +97,15 @@ export const createTheme = (mode: ThemeMode): AppTheme => {
 };
 
 export type BottomNavItem = {
-  key: "create-post" | "feed" | "groups" | "account";
-  label: "Create Post" | "Feed" | "Groups" | "Account";
+  key: "groups" | "for-you" | "notifications" | "profile";
+  label: "Groups" | "For You" | "Notifications" | "Profile";
 };
 
 export const BASE_BOTTOM_NAV_ITEMS: BottomNavItem[] = [
-  { key: "create-post", label: "Create Post" },
-  { key: "feed", label: "Feed" },
   { key: "groups", label: "Groups" },
-  { key: "account", label: "Account" }
+  { key: "for-you", label: "For You" },
+  { key: "notifications", label: "Notifications" },
+  { key: "profile", label: "Profile" }
 ];
 
 export const componentTokens = {

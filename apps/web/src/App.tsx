@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
-import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
+import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { buildPostPreviewText, mapAvatarPathToUiValue, type SupabaseGroupRow, type SupabasePostRow, type SupabaseUserProfileRow } from "@nospoilers/types";
 import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -10,10 +10,11 @@ import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
 import { profileNeedsOnboarding } from "./profileOnboarding";
+import { BottomNav } from "./components/BottomNav";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
 
-type MainView = "feed" | "groups" | "account";
+type MainView = BottomNavItem["key"];
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 type GroupEntity = SupabaseGroupRow;
@@ -98,6 +99,7 @@ export const App = () => {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
+  const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -280,56 +282,11 @@ export const App = () => {
           boxShadow: elevationTokens.medium,
           overflow: "hidden",
           display: "grid",
-          gridTemplateRows: "auto 1fr"
+          gridTemplateRows: "auto 1fr auto"
         }}
       >
-        <header style={{ padding: spacingTokens.md, borderBottom: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: spacingTokens.md }}>
-          <button
-            type="button"
-            aria-label="Create post"
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              border: "none",
-              background: theme.colors.accent,
-              color: "#fff",
-              fontSize: 28,
-              lineHeight: "28px",
-              fontWeight: 700,
-              cursor: "pointer"
-            }}
-          >
-            +
-          </button>
-
-          <div style={{ justifySelf: "center", background: theme.colors.surfaceMuted, borderRadius: radiusTokens.pill, border: `1px solid ${theme.colors.border}`, padding: 4, display: "flex", gap: 4 }}>
-            {(["feed", "groups"] as const).map((view) => {
-              const active = mainView === view;
-              return (
-                <button
-                  key={view}
-                  type="button"
-                  onClick={() => {
-                    setMainView(view);
-                    setMenuOpen(false);
-                  }}
-                  style={{
-                    border: "none",
-                    borderRadius: radiusTokens.pill,
-                    background: active ? theme.colors.accent : "transparent",
-                    color: active ? theme.colors.accentText : theme.colors.textPrimary,
-                    padding: "8px 16px",
-                    textTransform: "capitalize",
-                    fontWeight: 600,
-                    cursor: "pointer"
-                  }}
-                >
-                  {view}
-                </button>
-              );
-            })}
-          </div>
+        <header style={{ padding: spacingTokens.md, borderBottom: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: spacingTokens.sm }}>
+          <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 18 }}>NoSpoilers</h2>
 
           <div style={{ position: "relative", justifySelf: "end" }}>
             <button
@@ -352,8 +309,8 @@ export const App = () => {
             {authStatus ? <small style={{ color: theme.colors.textSecondary, justifySelf: "end" }}>{authStatus}</small> : null}
             {menuOpen ? (
               <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: 12, boxShadow: elevationTokens.low, overflow: "hidden", zIndex: 5 }}>
-                <button type="button" onClick={() => { setMainView("account"); setMenuOpen(false); }} style={menuItem(theme)}>
-                  Account
+                <button type="button" onClick={() => { setMainView("profile"); setMenuOpen(false); }} style={menuItem(theme)}>
+                  Profile
                 </button>
                 <button type="button" onClick={async () => { const { error } = await signOut(); if (error) { setAuthStatus(`Unable to sign out: ${error.message}`); return; } setAuthStatus("Signed out."); setMainView("groups"); setCurrentUser(undefined); }} style={menuItem(theme)}>
                   Log out
@@ -361,10 +318,30 @@ export const App = () => {
               </div>
             ) : null}
           </div>
+
+          <button
+            type="button"
+            aria-label="Create post"
+            onClick={() => setShowCreatePostSheet(true)}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              border: "none",
+              background: theme.colors.accent,
+              color: "#fff",
+              fontSize: 28,
+              lineHeight: "28px",
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            +
+          </button>
         </header>
 
         <main style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.md, background: theme.colors.background }}>
-          {mainView === "account" ? (
+          {mainView === "profile" ? (
             <ProfileSettingsScreen
               user={currentUser}
               onProfileUpdated={setCurrentUser}
@@ -395,7 +372,13 @@ export const App = () => {
             />
           ) : null}
 
-          {mainView === "feed" ? (
+          {mainView === "notifications" ? (
+            <article style={feedCard(theme)}>
+              <p style={{ margin: 0, color: theme.colors.textSecondary }}>You are all caught up. Notifications will appear here soon.</p>
+            </article>
+          ) : null}
+
+          {mainView === "for-you" ? (
             feedStatus === "loading" ? (
               <article style={feedCard(theme)}><p style={{ margin: 0, color: theme.colors.textSecondary }}>Loading feed posts from Supabase…</p></article>
             ) : feedStatus === "error" ? (
@@ -413,7 +396,21 @@ export const App = () => {
             )
           ) : null}
         </main>
+
+        <BottomNav activeTab={mainView} onSelect={(view) => { setMainView(view); setMenuOpen(false); }} theme={theme} />
       </div>
+
+      {showCreatePostSheet ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>
+          <div style={{ width: "min(430px, 100%)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.md, display: "grid", gap: spacingTokens.sm }}>
+            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create post</h3>
+            <p style={{ margin: 0, color: theme.colors.textSecondary }}>This placeholder sheet confirms the create-post flow is wired. Composer UI is coming next.</p>
+            <button type="button" onClick={() => setShowCreatePostSheet(false)} style={{ border: "none", borderRadius: radiusTokens.md, padding: "10px 14px", background: theme.colors.accent, color: theme.colors.accentText, fontWeight: 700, cursor: "pointer" }}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showCreateGroupSheet ? (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>

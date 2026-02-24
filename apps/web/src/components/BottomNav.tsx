@@ -1,8 +1,8 @@
-import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { BASE_BOTTOM_NAV_ITEMS, componentTokens, spacingTokens, type AppTheme, type BottomNavItem } from "@nospoilers/ui";
 
 type BottomNavProps = {
-  activeTab: string;
-  onSelect: (key: string) => void;
+  activeTab: BottomNavItem["key"];
+  onSelect: (key: BottomNavItem["key"]) => void;
   theme: AppTheme;
 };
 
