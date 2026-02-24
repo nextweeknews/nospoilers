@@ -66,7 +66,7 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
 
 const mapUserWithProfile = async (user: User, session: Session): Promise<AuthUser> => {
   const mappedUser = mapUser(user, session);
-  const { data: profile } = await supabaseClient.from("profiles").select("username,display_name,avatar_url").eq("id", user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("users").select("username,display_name,avatar_url").eq("id", user.id).maybeSingle();
   return mergeProfileIntoUser(mappedUser, profile as ProfileRecord | null);
 };
 export default function App() {
