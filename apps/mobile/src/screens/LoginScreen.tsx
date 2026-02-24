@@ -1,10 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { authRedirectTo, completeOAuthSession, signInWithGoogle, signInWithOtp, signInWithPassword, signUpWithPassword, verifySmsOtp } from "../services/authClient";
+import {
+  authRedirectTo,
+  completeOAuthSession,
+  getSession,
+  onAuthStateChange,
+  requestPasswordReset,
+  signInWithGoogle,
+  signInWithOtp,
+  signInWithPassword,
+  signUpWithPassword,
+  updateCurrentUserPassword,
+  verifySmsOtp
+} from "../services/authClient";
 import { AppText, AppTextInput } from "../components/Typography";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -38,18 +51,69 @@ type LoginScreenProps = {
   theme: AppTheme;
 };
 
+const callbackIndicatesRecovery = (url: string): boolean => {
+  const parsed = Linking.parse(url);
+  const params = ("params" in parsed && parsed.params ? parsed.params : {}) as Record<string, unknown>;
+  const queryType = typeof params.type === "string" ? params.type : undefined;
+  const fragment = url.includes("#") ? url.split("#")[1] ?? "" : "";
+  const fragmentType = new URLSearchParams(fragment).get("type") ?? undefined;
+  return queryType === "recovery" || fragmentType === "recovery";
+};
+
 export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [challengeStarted, setChallengeStarted] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [status, setStatus] = useState("Not signed in");
+  const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
 
   const saveResult = (result: ProviderLoginResult) => {
     onSignedIn(result);
     setStatus(`Signed in via ${result.user.identities.map((identity) => identity.provider).join(", ")}`);
   };
+
+  useEffect(() => {
+    const handleResetCallback = async (url: string) => {
+      if (!callbackIndicatesRecovery(url)) {
+        return;
+      }
+
+      const { error } = await completeOAuthSession(url);
+      if (error) {
+        setStatus(`Password reset link could not be completed. ${error.message}`);
+        return;
+      }
+
+      setIsPasswordResetMode(true);
+      setStatus("Enter a new password to finish resetting your password.");
+    };
+
+    void Linking.getInitialURL().then((url) => {
+      if (url) {
+        void handleResetCallback(url);
+      }
+    });
+
+    const linkSub = Linking.addEventListener("url", ({ url }) => {
+      void handleResetCallback(url);
+    });
+
+    const { data: authListener } = onAuthStateChange(async (event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsPasswordResetMode(true);
+        setStatus("Enter a new password to finish resetting your password.");
+      }
+    });
+
+    return () => {
+      linkSub.remove();
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   const handleOAuth = async () => {
     const { data, error } = await signInWithGoogle();
@@ -73,6 +137,48 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
 
     saveResult(mapResult(sessionData.user, sessionData.session));
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setStatus("Enter your email, then tap Forgot password?.");
+      return;
+    }
+
+    const { error } = await requestPasswordReset(email.trim());
+    if (error) {
+      setStatus(`Unable to send reset email. ${error.message}`);
+      return;
+    }
+
+    setStatus("If an account exists for that email, check your email for password reset instructions.");
+  };
+
+  const handleCompletePasswordReset = async () => {
+    if (newPassword.length < 8) {
+      setStatus("Use at least 8 characters for your new password.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setStatus("New passwords do not match.");
+      return;
+    }
+
+    const { error } = await updateCurrentUserPassword(newPassword);
+    if (error) {
+      setStatus(`Unable to update password. ${error.message}`);
+      return;
+    }
+
+    const { data, error: sessionError } = await getSession();
+    if (sessionError || !data.session?.user) {
+      setIsPasswordResetMode(false);
+      setStatus("Password updated. Sign in with your new password.");
+      return;
+    }
+
+    saveResult(mapResult(data.session.user, data.session));
   };
 
   return (
@@ -129,47 +235,76 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       <View style={[styles.fallbackSection, { borderTopColor: theme.colors.border }]}> 
         <AppText style={[styles.fallbackLabel, { color: theme.colors.textSecondary }]}>Fallback: email/password</AppText>
         <AppTextInput placeholder="Email" placeholderTextColor={theme.colors.textSecondary} value={email} onChangeText={setEmail} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
-        <AppTextInput
-          placeholder="Password"
-          placeholderTextColor={theme.colors.textSecondary}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
-        />
-        <Pressable
-          style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
-          onPress={async () => {
-            const { data, error } = await signInWithPassword(email, password);
-            if (error || !data.user || !data.session) {
-              setStatus(error?.message ?? "Unable to sign in with email.");
-              return;
-            }
+        {isPasswordResetMode ? (
+          <>
+            <AppTextInput
+              placeholder="New password"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+              style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+            />
+            <AppTextInput
+              placeholder="Confirm new password"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={confirmNewPassword}
+              onChangeText={setConfirmNewPassword}
+              secureTextEntry
+              style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+            />
+            <Pressable style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]} onPress={handleCompletePasswordReset}>
+              <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Set new password</AppText>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <AppTextInput
+              placeholder="Password"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]}
+            />
+            <Pressable onPress={handleForgotPassword}>
+              <AppText style={[styles.link, { color: theme.colors.accent }]}>Forgot password?</AppText>
+            </Pressable>
+            <Pressable
+              style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
+              onPress={async () => {
+                const { data, error } = await signInWithPassword(email, password);
+                if (error || !data.user || !data.session) {
+                  setStatus(error?.message ?? "Unable to sign in with email.");
+                  return;
+                }
 
-            saveResult(mapResult(data.user, data.session));
-          }}
-        >
-          <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign in with email</AppText>
-        </Pressable>
-        <Pressable
-          style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
-          onPress={async () => {
-            const { data, error } = await signUpWithPassword(email, password);
-            if (error) {
-              setStatus(error.message);
-              return;
-            }
+                saveResult(mapResult(data.user, data.session));
+              }}
+            >
+              <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign in with email</AppText>
+            </Pressable>
+            <Pressable
+              style={[styles.secondaryButton, { backgroundColor: theme.colors.surfaceMuted }]}
+              onPress={async () => {
+                const { data, error } = await signUpWithPassword(email, password);
+                if (error) {
+                  setStatus(error.message);
+                  return;
+                }
 
-            if (data.user && data.session) {
-              saveResult(mapResult(data.user, data.session));
-              return;
-            }
+                if (data.user && data.session) {
+                  saveResult(mapResult(data.user, data.session));
+                  return;
+                }
 
-            setStatus("Check your email to finish sign up.");
-          }}
-        >
-          <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</AppText>
-        </Pressable>
+                setStatus("Check your email to finish sign up.");
+              }}
+            >
+              <AppText style={[styles.secondaryText, { color: theme.colors.textPrimary }]}>Sign up with email</AppText>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <AppText style={[styles.status, { color: theme.colors.success }]}>{status}</AppText>
@@ -193,5 +328,6 @@ const styles = StyleSheet.create({
   fallbackLabel: { textTransform: "uppercase", fontSize: 12, letterSpacing: 0.8 },
   secondaryButton: { borderRadius: radiusTokens.sm, paddingVertical: 10, alignItems: "center" },
   secondaryText: { fontWeight: "600" },
+  link: { fontWeight: "600" },
   status: { marginTop: 4 }
 });
