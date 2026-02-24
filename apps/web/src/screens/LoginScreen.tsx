@@ -208,13 +208,13 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const searchParams = new URLSearchParams(window.location.search);
     const callbackType = hashParams.get("type") ?? searchParams.get("type");
-    const hasOAuthCode = searchParams.has("code");
+    const oauthCode = searchParams.get("code");
 
     void (async () => {
-      if (hasOAuthCode) {
+      if (oauthCode) {
         setStatus({ message: "Finishing Google sign-in…", tone: "info" });
 
-        const { error } = await supabaseClient.auth.exchangeCodeForSession(window.location.href);
+        const { error } = await supabaseClient.auth.exchangeCodeForSession(oauthCode);
 
         if (!active) return;
 
