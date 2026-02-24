@@ -188,6 +188,12 @@ export const App = () => {
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
 
+  const onChooseDifferentLoginMethod = async () => {
+    await signOut();
+    setCurrentUser(undefined);
+    setAuthResolved(true);
+  };
+
   if (!authResolved || !currentUser) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
@@ -199,7 +205,12 @@ export const App = () => {
   if (!hasCompleteProfile(currentUser)) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
-        <OnboardingProfileScreen user={currentUser} theme={theme} onProfileCompleted={setCurrentUser} />
+        <OnboardingProfileScreen
+          user={currentUser}
+          theme={theme}
+          onProfileCompleted={setCurrentUser}
+          onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
+        />
       </div>
     );
   }
