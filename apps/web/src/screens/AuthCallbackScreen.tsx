@@ -47,26 +47,27 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
         return;
       }
 
-      const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
-      if (!active) {
-        return;
-      }
-
-      if (error) {
-        setStatus("error");
-        setErrorMessage(`Unable to finish sign-in: ${error.message}`);
-        return;
-      }
-
-      window.location.replace(returnPath);
-    };
-
-    void handleCodeExchange();
-
-    return () => {
-      active = false;
-    };
-  }, [returnPath]);
+  try {
+    const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
+  
+    if (!active) return;
+  
+    if (error) {
+      setStatus("error");
+      setErrorMessage(`Unable to finish sign-in: ${error.message}`);
+      return;
+    }
+  
+    window.location.replace(returnPath);
+  } catch (err) {
+    if (!active) return;
+  
+    const message =
+      err instanceof Error ? err.message : "Unknown error during code exchange.";
+  
+    setStatus("error");
+    setErrorMessage(`Unable to finish sign-in: ${message}`);
+  }
 
   if (status === "error") {
     return (
