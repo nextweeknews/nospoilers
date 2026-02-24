@@ -7,20 +7,46 @@ export const authClient = supabaseClient.auth;
 
 export const getSession = async () => authClient.getSession();
 
-
-export const onAuthStateChange = (...args: Parameters<typeof authClient.onAuthStateChange>) => authClient.onAuthStateChange(...args);
+export const onAuthStateChange = (...args: Parameters<typeof authClient.onAuthStateChange>) =>
+  authClient.onAuthStateChange(...args);
 
 export const signInWithOtp = async (phone: string) => authClient.signInWithOtp({ phone });
 
-export const verifySmsOtp = async (phone: string, token: string) => authClient.verifyOtp({ phone, token, type: "sms" });
+export const verifySmsOtp = async (phone: string, token: string) =>
+  authClient.verifyOtp({ phone, token, type: "sms" });
 
-export const verifyPhoneChangeOtp = async (phone: string, token: string) => authClient.verifyOtp({ phone, token, type: "phone_change" });
+export const verifyPhoneChangeOtp = async (phone: string, token: string) =>
+  authClient.verifyOtp({ phone, token, type: "phone_change" });
 
-export const signInWithPassword = async (email: string, password: string) => authClient.signInWithPassword({ email, password });
+export const signInWithPassword = async (email: string, password: string) =>
+  authClient.signInWithPassword({ email, password });
 
-export const signUpWithPassword = async (email: string, password: string) => authClient.signUp({ email, password });
-export const authRedirectTo = webConfig.supabaseAuthRedirectUrl;
-export const requestPasswordReset = async (email: string) => authClient.resetPasswordForEmail(email, { redirectTo: authRedirectTo });
+export const signUpWithPassword = async (email: string, password: string) =>
+  authClient.signUp({ email, password });
+
+/**
+ * Builds a safe auth redirect URL for OAuth/password reset.
+ * In dev (Codespaces), prefer the current runtime origin so redirects stay valid
+ * even when the preview URL changes.
+ *
+ * IMPORTANT: The resulting URL must be included in Supabase Auth Redirect URLs.
+ */
+const getRuntimeAuthRedirectUrl = (): string => {
+  // SSR-safe guard (web app should normally be browser-only here)
+  if (typeof window !== "undefined" && window.location?.origin) {
+    // If your login screen itself handles callback state + session restoration,
+    // redirect back to the current page path. If you have a dedicated callback route,
+    // change this to `${window.location.origin}/auth/callback`.
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+
+  return webConfig.supabaseAuthRedirectUrl;
+};
+
+export const authRedirectTo = getRuntimeAuthRedirectUrl();
+
+export const requestPasswordReset = async (email: string) =>
+  authClient.resetPasswordForEmail(email, { redirectTo: authRedirectTo });
 
 export const signInWithGoogle = async () =>
   authClient.signInWithOAuth({
@@ -47,13 +73,15 @@ export const reauthenticateForIdentityLink = async () => {
   return authApi.reauthenticate();
 };
 
-export const linkEmailPasswordIdentity = async (email: string, password: string) => authClient.updateUser({ email, password });
-export const updateCurrentUserPassword = async (password: string) => authClient.updateUser({ password });
+export const linkEmailPasswordIdentity = async (email: string, password: string) =>
+  authClient.updateUser({ email, password });
+
+export const updateCurrentUserPassword = async (password: string) =>
+  authClient.updateUser({ password });
 
 export const linkPhoneIdentity = async (phone: string) => authClient.updateUser({ phone });
 
 export const getAuthUser = async () => authClient.getUser();
-
 
 export const deleteAccount = async (): Promise<{ data: DeleteAccountResponse | null; error: Error | null }> => {
   const { data: userData, error: userError } = await authClient.getUser();
@@ -143,8 +171,11 @@ export const authService = {
     }),
 
   finalizeAvatarUpload: async (userId: string, uploadId: string, metadata: AvatarMeta): Promise<AuthUser> =>
-    callAuthApi<AuthUser>(`/auth/users/${encodeURIComponent(userId)}/avatar-upload-plan/${encodeURIComponent(uploadId)}/finalize`, {
-      method: "POST",
-      body: JSON.stringify({ metadata })
-    })
+    callAuthApi<AuthUser>(
+      `/auth/users/${encodeURIComponent(userId)}/avatar-upload-plan/${encodeURIComponent(uploadId)}/finalize`,
+      {
+        method: "POST",
+        body: JSON.stringify({ metadata })
+      }
+    )
 };
