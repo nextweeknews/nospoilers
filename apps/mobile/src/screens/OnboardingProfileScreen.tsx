@@ -153,34 +153,52 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
         }
       }
   
-      console.log("[onboarding] updateProfile");
-      let updatedUser = await authService.updateProfile(user.id, {
-        displayName: skipOptional ? nextUsername : nextDisplayName || nextUsername,
-        username: nextUsername
-      });
-      console.log("[onboarding] updateProfile ok", updatedUser);
+      let updatedUser: AuthUser = {
+        ...user,
+        username: nextUsername,
+        usernameNormalized: nextUsername,
+        displayName: skipOptional ? nextUsername : nextDisplayName || nextUsername
+      };
+      
+      try {
+        console.log("[onboarding] updateProfile start");
+        updatedUser = await authService.updateProfile(user.id, {
+          displayName: skipOptional ? nextUsername : nextDisplayName || nextUsername,
+          username: nextUsername
+        });
+        console.log("[onboarding] updateProfile ok", updatedUser);
+      } catch (error) {
+        // Do not block onboarding if custom API is unavailable in dev/Codespaces.
+        // public.users upsert below is the source of truth for web onboarding persistence.
+        console.warn("[onboarding] updateProfile failed, continuing with local fallback user", error);
+      }
   
       // If avatar upload is part of this step, do it BEFORE writing the final public.users row,
       // so avatar_path is included in the same upsert.
       if (!skipOptional && avatarFileName && isBlank(updatedUser.avatarUrl)) {
-        console.log("[onboarding] createAvatarUploadPlan");
-        const upload = await authService.createAvatarUploadPlan(user.id, {
-          fileName: avatarFileName,
-          contentType: "image/png",
-          bytes: 220_000,
-          width: 512,
-          height: 512
-        });
-  
-        console.log("[onboarding] finalizeAvatarUpload");
-        updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
-          contentType: "image/png",
-          bytes: 220_000,
-          width: 512,
-          height: 512
-        });
-  
-        console.log("[onboarding] avatar finalized", updatedUser.avatarUrl);
+        try {
+          console.log("[onboarding] createAvatarUploadPlan");
+          const upload = await authService.createAvatarUploadPlan(user.id, {
+            fileName: avatarFileName,
+            contentType: "image/png",
+            bytes: 220_000,
+            width: 512,
+            height: 512
+          });
+      
+          console.log("[onboarding] finalizeAvatarUpload");
+          updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
+            contentType: "image/png",
+            bytes: 220_000,
+            width: 512,
+            height: 512
+          });
+      
+          console.log("[onboarding] avatar finalized", updatedUser.avatarUrl);
+        } catch (error) {
+          // Avatar is optional; don't block onboarding if the custom API is unavailable.
+          console.warn("[onboarding] avatar upload flow failed, continuing without avatar", error);
+        }
       }
   
       // Build payload AFTER all profile/avatar updates, so the DB row gets final values.
