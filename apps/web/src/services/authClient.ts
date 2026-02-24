@@ -24,23 +24,29 @@ export const signInWithPassword = async (email: string, password: string) =>
 export const signUpWithPassword = async (email: string, password: string) =>
   authClient.signUp({ email, password });
 
+const AUTH_CALLBACK_PATH = "/auth/callback";
+
 /**
- * Builds a safe auth redirect URL for OAuth/password reset.
- * In dev (Codespaces), prefer the current runtime origin so redirects stay valid
- * even when the preview URL changes.
+ * Builds a deterministic callback URL for OAuth/password reset.
  *
- * IMPORTANT: The resulting URL must be included in Supabase Auth Redirect URLs.
+ * Redirect resolution order:
+ * 1) VITE_SUPABASE_AUTH_REDIRECT_URL (via webConfig.supabaseAuthRedirectUrl) when explicitly set.
+ * 2) `${window.location.origin}/auth/callback` at runtime.
+ *
+ * IMPORTANT: This value must match entries in both:
+ * - Supabase Auth Redirect URLs
+ * - Google Authorized JavaScript Origins / Redirect URIs
  */
 const getRuntimeAuthRedirectUrl = (): string => {
-  // SSR-safe guard (web app should normally be browser-only here)
-  if (typeof window !== "undefined" && window.location?.origin) {
-    // If your login screen itself handles callback state + session restoration,
-    // redirect back to the current page path. If you have a dedicated callback route,
-    // change this to `${window.location.origin}/auth/callback`.
-    return `${window.location.origin}${window.location.pathname}`;
+  if (webConfig.supabaseAuthRedirectUrl) {
+    return webConfig.supabaseAuthRedirectUrl;
   }
 
-  return webConfig.supabaseAuthRedirectUrl;
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${AUTH_CALLBACK_PATH}`;
+  }
+
+  return AUTH_CALLBACK_PATH;
 };
 
 export const authRedirectTo = getRuntimeAuthRedirectUrl();
