@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
+import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
@@ -76,6 +76,7 @@ export default function App() {
   const [groups, setGroups] = useState<GroupEntity[]>([]);
   const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
   const colorScheme = useColorScheme();
   const theme = createTheme(resolveThemePreference(colorScheme === "dark" ? "dark" : "light", themePreference));
 
@@ -124,7 +125,12 @@ export default function App() {
 
     const loadGroups = async () => {
       setGroupStatus("loading");
-      const result = await supabaseClient.from("groups").select("id,name,description,avatar_path").order("created_at", { ascending: false });
+      const result = await supabaseClient
+        .from("group_memberships")
+        .select("groups(id,name,description,avatar_path)")
+        .eq("user_id", currentUser.id)
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
       if (cancelled) {
         return;
       }
@@ -136,7 +142,9 @@ export default function App() {
         return;
       }
 
-      const loaded = (result.data as GroupEntity[] | null) ?? [];
+      const memberships = (result.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
+      const loaded = memberships
+        .flatMap((membership) => (Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []));
       setGroups(loaded);
       setGroupStatus(loaded.length ? "ready" : "empty");
       setGroupError(undefined);
@@ -200,13 +208,30 @@ export default function App() {
               />
             ) : (
               <GroupScreen
-                group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: mapAvatarPathToUiValue(groups[0].avatar_path) } : undefined}
+                groups={groups.map((group) => ({
+                  id: group.id,
+                  name: group.name,
+                  description: group.description,
+                  coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+                }))}
                 status={groupStatus}
                 errorMessage={groupError}
+                onCreateGroup={() => setShowCreateGroupSheet(true)}
                 theme={theme}
               />
             )}
             <BottomTabs activeTab={activeTab} onSelect={setActiveTab} theme={theme} />
+            <Modal visible={showCreateGroupSheet} transparent animationType="slide" onRequestClose={() => setShowCreateGroupSheet(false)}>
+              <View style={styles.modalBackdrop}>
+                <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <AppText style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Create group</AppText>
+                  <AppText style={[styles.modalBody, { color: theme.colors.textSecondary }]}>This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.</AppText>
+                  <Pressable onPress={() => setShowCreateGroupSheet(false)} style={[styles.modalButton, { backgroundColor: theme.colors.accent }]}>
+                    <AppText style={{ color: theme.colors.accentText, fontWeight: "700" }}>Close</AppText>
+                  </Pressable>
+                </View>
+              </View>
+            </Modal>
           </>
         )}
       </View>
@@ -219,5 +244,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, gap: 12 },
   configText: { fontSize: 12 },
   authLoadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
-  authLoadingText: { fontSize: 14 }
+  authLoadingText: { fontSize: 14 },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: spacingTokens.lg },
+  modalCard: { borderWidth: 1, borderRadius: 16, padding: spacingTokens.lg, gap: spacingTokens.sm },
+  modalTitle: { fontSize: 18, fontWeight: "700" },
+  modalBody: { fontSize: 14 },
+  modalButton: { borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: spacingTokens.sm }
 });

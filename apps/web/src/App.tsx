@@ -97,6 +97,7 @@ export const App = () => {
   const [feedError, setFeedError] = useState<string>();
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [authStatus, setAuthStatus] = useState<string>();
+  const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -178,7 +179,12 @@ export const App = () => {
       setFeedError(undefined);
 
       const [groupResult, postResult] = await Promise.all([
-        supabaseClient.from("groups").select("id,name,description,avatar_path").order("created_at", { ascending: false }),
+        supabaseClient
+          .from("group_memberships")
+          .select("groups(id,name,description,avatar_path)")
+          .eq("user_id", currentUser.id)
+          .eq("status", "active")
+          .order("created_at", { ascending: false }),
         supabaseClient.from("posts").select("id,body_text,created_at").order("created_at", { ascending: false })
       ]);
 
@@ -191,7 +197,9 @@ export const App = () => {
         setGroupStatus("error");
         setGroupError(groupResult.error.message);
       } else {
-        const loadedGroups = (groupResult.data as GroupEntity[] | null) ?? [];
+        const memberships = (groupResult.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
+        const loadedGroups = memberships
+          .flatMap((membership) => (Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []));
         setGroups(loadedGroups);
         setGroupStatus(loadedGroups.length ? "ready" : "empty");
       }
@@ -374,10 +382,16 @@ export const App = () => {
 
           {mainView === "groups" ? (
             <GroupScreen
-              group={groups[0] ? { name: groups[0].name, description: groups[0].description, coverUrl: mapAvatarPathToUiValue(groups[0].avatar_path) } : undefined}
+              groups={groups.map((group) => ({
+                id: group.id,
+                name: group.name,
+                description: group.description,
+                coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+              }))}
               status={groupStatus}
               errorMessage={groupError}
               theme={theme}
+              onCreateGroup={() => setShowCreateGroupSheet(true)}
             />
           ) : null}
 
@@ -400,6 +414,18 @@ export const App = () => {
           ) : null}
         </main>
       </div>
+
+      {showCreateGroupSheet ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "grid", placeItems: "end center", padding: spacingTokens.lg }}>
+          <div style={{ width: "min(430px, 100%)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.md, display: "grid", gap: spacingTokens.sm }}>
+            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create group</h3>
+            <p style={{ margin: 0, color: theme.colors.textSecondary }}>This placeholder sheet confirms the create-group flow is wired. Full group creation is coming next.</p>
+            <button type="button" onClick={() => setShowCreateGroupSheet(false)} style={{ border: "none", borderRadius: radiusTokens.md, padding: "10px 14px", background: theme.colors.accent, color: theme.colors.accentText, fontWeight: 700, cursor: "pointer" }}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
