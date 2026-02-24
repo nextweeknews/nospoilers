@@ -45,7 +45,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     }
 
 
-    const runCheck = async () => {
+    void (async () => {
       const [availability, dbResult] = await Promise.all([
         authService.checkUsernameAvailability(normalized),
         supabaseClient.from("profiles").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
@@ -64,15 +64,10 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
       }
 
       setUsernameFeedback({ tone: "success", message: "This username is available." });
-    };
-
-    const timeout = window.setTimeout(() => {
-      void runCheck();
-    }, 250);
+    })();
 
     return () => {
       active = false;
-      window.clearTimeout(timeout);
     };
   }, [username, user.id, user.usernameNormalized]);
 
