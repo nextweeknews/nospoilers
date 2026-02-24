@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
@@ -7,6 +7,7 @@ import {
   authRedirectTo,
   authService,
   completeOAuthSession,
+  deleteAccount,
   getAuthUser,
   linkEmailPasswordIdentity,
   linkGoogleIdentity,
@@ -17,17 +18,19 @@ import {
 type ProfileSettingsScreenProps = {
   user?: AuthUser;
   onProfileUpdated: (user: AuthUser) => void;
+  onAccountDeleted: () => void;
   theme: AppTheme;
   themePreference: ThemePreference;
   onThemePreferenceChanged: (next: ThemePreference) => void;
 };
 
-export const ProfileSettingsScreen = ({ user, onProfileUpdated, theme, themePreference, onThemePreferenceChanged }: ProfileSettingsScreenProps) => {
+export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted, theme, themePreference, onThemePreferenceChanged }: ProfileSettingsScreenProps) => {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [linkPhone, setLinkPhone] = useState("");
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [status, setStatus] = useState("Sign in to edit account settings.");
 
   const identityStatus = useMemo(() => {
@@ -219,6 +222,35 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, theme, themePref
           }}
         >
           <Text style={[styles.buttonText, { color: theme.colors.accentText }]}>Link email/password</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.linkSection, { borderTopColor: theme.colors.border }]}> 
+        <Text style={[styles.subtitle, { color: "#b42318" }]}>Delete account</Text>
+        <Text style={[styles.status, { color: theme.colors.textSecondary }]}>Permanent warning: this deletes your profile and identities, revokes all sessions, and cannot be undone.</Text>
+        <TextInput value={deleteConfirmation} onChangeText={setDeleteConfirmation} placeholder='Type "DELETE" to enable' placeholderTextColor={theme.colors.textSecondary} style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.textPrimary, backgroundColor: theme.colors.surfaceMuted }]} />
+        <Pressable
+          disabled={deleteConfirmation !== "DELETE"}
+          style={[styles.button, { backgroundColor: "#b42318", opacity: deleteConfirmation === "DELETE" ? 1 : 0.6 }]}
+          onPress={() => {
+            Alert.alert("Delete account permanently?", "This cannot be undone. Your profile, identities, and active sessions will be removed.", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete permanently",
+                style: "destructive",
+                onPress: async () => {
+                  const { error } = await deleteAccount();
+                  if (error) {
+                    setStatus(`Delete failed: ${error.message}`);
+                    return;
+                  }
+                  onAccountDeleted();
+                }
+              }
+            ]);
+          }}
+        >
+          <Text style={[styles.buttonText, { color: "#fff" }]}>Delete account permanently</Text>
         </Pressable>
       </View>
 

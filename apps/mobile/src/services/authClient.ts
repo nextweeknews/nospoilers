@@ -1,3 +1,4 @@
+import type { DeleteAccountResponse } from "@nospoilers/types";
 import * as Linking from "expo-linking";
 import { mobileConfig } from "../config/env";
 import { supabaseClient } from "./supabaseClient";
@@ -43,7 +44,8 @@ export const linkPhoneIdentity = async (phone: string) => authClient.updateUser(
 export const getAuthUser = async () => authClient.getUser();
 
 export const completeOAuthSession = async (callbackUrl: string) => {
-  const { params } = Linking.parse(callbackUrl);
+  const parsed = Linking.parse(callbackUrl);
+  const params = ("params" in parsed && parsed.params ? parsed.params : {}) as Record<string, unknown>;
   const accessToken = typeof params.access_token === "string" ? params.access_token : undefined;
   const refreshToken = typeof params.refresh_token === "string" ? params.refresh_token : undefined;
 
@@ -52,6 +54,34 @@ export const completeOAuthSession = async (callbackUrl: string) => {
   }
 
   return authClient.setSession({ access_token: accessToken, refresh_token: refreshToken });
+};
+
+
+export const deleteAccount = async (): Promise<{ data: DeleteAccountResponse | null; error: Error | null }> => {
+  const { data: userData, error: userError } = await authClient.getUser();
+  if (userError || !userData.user) {
+    return { data: null, error: new Error(userError?.message ?? "Not signed in.") };
+  }
+
+  const rpcClient = supabaseClient as any;
+  const { data, error } = await rpcClient.rpc("delete_account", { p_user_id: userData.user.id });
+  if (error) {
+    return { data: null, error: new Error(error.message) };
+  }
+
+  const response = (data ?? {
+    deletedUserId: userData.user.id,
+    revokedSessionCount: 1,
+    clearedIdentityCount: (userData.user.identities ?? []).length,
+    clearedProfile: true
+  }) as DeleteAccountResponse;
+
+  const { error: signOutError } = await authClient.signOut({ scope: "global" });
+  if (signOutError) {
+    return { data: null, error: new Error(signOutError.message) };
+  }
+
+  return { data: response, error: null };
 };
 
 export const signOut = async () => authClient.signOut();

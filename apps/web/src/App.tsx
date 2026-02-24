@@ -237,6 +237,11 @@ export const App = () => {
             <ProfileSettingsScreen
               user={currentUser}
               onProfileUpdated={setCurrentUser}
+              onAccountDeleted={() => {
+                setCurrentUser(undefined);
+                setMainView("feed");
+                setMenuOpen(false);
+              }}
               onThemePreferenceChanged={onThemePreferenceChanged}
               themePreference={themePreference}
               theme={theme}

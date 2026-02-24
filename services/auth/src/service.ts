@@ -12,7 +12,8 @@ import type {
   ProviderLoginResult,
   SecureTokenStore,
   SessionPair,
-  UsernameAvailability
+  UsernameAvailability,
+  DeleteAccountResult
 } from "./types";
 
 interface PhoneChallengeRecord {
@@ -57,7 +58,7 @@ interface SuspiciousActivityRecord {
 
 export interface AuthAuditEvent {
   id: string;
-  action: "otp_send" | "otp_verify" | "email_login" | "oauth_login" | "session_refresh" | "logout";
+  action: "otp_send" | "otp_verify" | "email_login" | "oauth_login" | "session_refresh" | "logout" | "account_delete";
   status: "success" | "failure";
   userId?: string;
   actorRef?: string;
@@ -415,6 +416,61 @@ export class AuthService {
     await this.saveRefreshTokens(refreshRecords);
     this.logAudit({ action: "session_refresh", status: "success", userId: user.id });
     return newSession;
+  }
+
+  async deleteAccount(userId: string): Promise<DeleteAccountResult> {
+    const users = await this.getUsers();
+    const user = users[userId];
+    if (!user) {
+      throw new Error("Unknown user.");
+    }
+
+    const refreshRecords = await this.getRefreshTokens();
+    let revokedSessionCount = 0;
+    for (const [token, record] of Object.entries(refreshRecords)) {
+      if (record.userId === userId) {
+        delete refreshRecords[token];
+        revokedSessionCount += 1;
+      }
+    }
+
+    const usernameIndex = await this.getUsernameIndex();
+    const reservations = await this.getUsernameReservations();
+    if (user.usernameNormalized) {
+      delete usernameIndex[user.usernameNormalized];
+    }
+
+    for (const [normalized, reservation] of Object.entries(reservations)) {
+      if (reservation.userId === userId) {
+        delete reservations[normalized];
+      }
+    }
+
+    const uploads = await this.getAvatarUploads();
+    for (const [uploadId, upload] of Object.entries(uploads)) {
+      if (upload.userId === userId) {
+        delete uploads[uploadId];
+      }
+    }
+
+    const clearedIdentityCount = user.identities.length;
+    delete users[userId];
+
+    await this.saveRefreshTokens(refreshRecords);
+    await this.saveUsernameIndex(usernameIndex);
+    await this.saveUsernameReservations(reservations);
+    await this.saveAvatarUploads(uploads);
+    await this.saveUsers(users);
+    await this.tokenStore.clear();
+
+    this.logAudit({ action: "account_delete", status: "success", userId, actorRef: userId, metadata: { revokedSessionCount, clearedIdentityCount } });
+
+    return {
+      deletedUserId: userId,
+      revokedSessionCount,
+      clearedIdentityCount,
+      clearedProfile: true
+    };
   }
 
   async logout(): Promise<void> {

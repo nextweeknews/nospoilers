@@ -260,3 +260,14 @@ export type RollbackProgressResponse = {
   progress: UserProgressState;
   relockedPostIds: string[];
 };
+
+export type DeleteAccountRequest = {
+  confirmation: "DELETE";
+};
+
+export type DeleteAccountResponse = {
+  deletedUserId: string;
+  revokedSessionCount: number;
+  clearedIdentityCount: number;
+  clearedProfile: boolean;
+};

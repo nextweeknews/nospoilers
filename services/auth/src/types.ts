@@ -92,6 +92,14 @@ export interface PhoneChallenge {
   redactedPhone: string;
 }
 
+
+export interface DeleteAccountResult {
+  deletedUserId: string;
+  revokedSessionCount: number;
+  clearedIdentityCount: number;
+  clearedProfile: boolean;
+}
+
 export interface EncryptedValue {
   iv: string;
   cipherText: string;

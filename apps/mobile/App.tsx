@@ -134,6 +134,10 @@ export default function App() {
               <ProfileSettingsScreen
                 user={currentUser}
                 onProfileUpdated={setCurrentUser}
+                onAccountDeleted={() => {
+                  setCurrentUser(undefined);
+                  setActiveTab("groups");
+                }}
                 theme={theme}
                 themePreference={themePreference}
                 onThemePreferenceChanged={setThemePreference}
