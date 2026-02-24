@@ -9,6 +9,7 @@ import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
+import { profileNeedsOnboarding } from "./profileOnboarding";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
 
@@ -56,12 +57,13 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
     return authUser;
   }
 
-  const username = profile.username?.trim() ? profile.username.trim() : authUser.username;
+  const normalizedUsername = profile.username?.trim();
+  const username = normalizedUsername || authUser.username;
 
   return {
     ...authUser,
     username,
-    usernameNormalized: username?.toLowerCase() ?? authUser.usernameNormalized,
+    usernameNormalized: normalizedUsername ? normalizedUsername.toLowerCase() : authUser.usernameNormalized,
     displayName: profile.display_name?.trim() ? profile.display_name.trim() : authUser.displayName,
     avatarUrl: mapAvatarPathToUiValue(profile.avatar_path) ?? authUser.avatarUrl
   };
@@ -74,12 +76,12 @@ const mapUserWithProfile = async (user: User, session: Session): Promise<{ user:
 
   return {
     user: mergeProfileIntoUser(mappedUser, normalizedProfile),
-    needsOnboarding: !normalizedProfile
+    needsOnboarding: profileNeedsOnboarding(normalizedProfile)
   };
 };
 
 export const App = () => {
-  const [mainView, setMainView] = useState<MainView>("feed");
+  const [mainView, setMainView] = useState<MainView>("groups");
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser>();
   const [systemMode, setSystemMode] = useState<ThemeMode>(() => getSystemMode());
@@ -345,7 +347,7 @@ export const App = () => {
                 <button type="button" onClick={() => { setMainView("account"); setMenuOpen(false); }} style={menuItem(theme)}>
                   Account
                 </button>
-                <button type="button" onClick={async () => { const { error } = await signOut(); if (error) { setAuthStatus(`Unable to sign out: ${error.message}`); return; } setAuthStatus("Signed out."); setMainView("feed"); setCurrentUser(undefined); }} style={menuItem(theme)}>
+                <button type="button" onClick={async () => { const { error } = await signOut(); if (error) { setAuthStatus(`Unable to sign out: ${error.message}`); return; } setAuthStatus("Signed out."); setMainView("groups"); setCurrentUser(undefined); }} style={menuItem(theme)}>
                   Log out
                 </button>
               </div>
@@ -361,7 +363,7 @@ export const App = () => {
               onAccountDeleted={() => {
                 setCurrentUser(undefined);
                 setNeedsOnboarding(false);
-                setMainView("feed");
+                setMainView("groups");
                 setMenuOpen(false);
               }}
               onThemePreferenceChanged={onThemePreferenceChanged}

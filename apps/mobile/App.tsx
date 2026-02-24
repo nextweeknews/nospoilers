@@ -13,6 +13,7 @@ import { mobileConfig } from "./src/config/env";
 import { getSession, onAuthStateChange, signOut } from "./src/services/authClient";
 import { supabaseClient } from "./src/services/supabaseClient";
 import { AppText } from "./src/components/Typography";
+import { profileNeedsOnboarding } from "./src/profileOnboarding";
 
 type GroupEntity = SupabaseGroupRow;
 
@@ -44,12 +45,13 @@ const mergeProfileIntoUser = (authUser: AuthUser, profile?: ProfileRecord | null
     return authUser;
   }
 
-  const username = profile.username?.trim() ? profile.username.trim() : authUser.username;
+  const normalizedUsername = profile.username?.trim();
+  const username = normalizedUsername || authUser.username;
 
   return {
     ...authUser,
     username,
-    usernameNormalized: username?.toLowerCase() ?? authUser.usernameNormalized,
+    usernameNormalized: normalizedUsername ? normalizedUsername.toLowerCase() : authUser.usernameNormalized,
     displayName: profile.display_name?.trim() ? profile.display_name.trim() : authUser.displayName,
     avatarUrl: mapAvatarPathToUiValue(profile.avatar_path) ?? authUser.avatarUrl
   };
@@ -62,7 +64,7 @@ const mapUserWithProfile = async (user: User, session: Session): Promise<{ user:
 
   return {
     user: mergeProfileIntoUser(mappedUser, normalizedProfile),
-    needsOnboarding: !normalizedProfile
+    needsOnboarding: profileNeedsOnboarding(normalizedProfile)
   };
 };
 export default function App() {
