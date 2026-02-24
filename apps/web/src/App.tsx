@@ -456,7 +456,7 @@ export const App = () => {
           }
 
           const { data: inserted, error } = await supabaseClient.from("posts").insert({
-            author_id: currentUser.id,
+            author_user_id: currentUser.id,
             body_text: payload.body_text,
             public: payload.public,
             group_id: payload.group_id,
