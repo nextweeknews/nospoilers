@@ -54,13 +54,16 @@ export const authRedirectTo = getRuntimeAuthRedirectUrl();
 export const requestPasswordReset = async (email: string) =>
   authClient.resetPasswordForEmail(email, { redirectTo: authRedirectTo });
 
-export const signInWithGoogle = async () =>
-  authClient.signInWithOAuth({
+export async function signInWithGoogle() {
+  const next = `${window.location.pathname}${window.location.search}`;
+
+  return supabaseClient.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: authRedirectTo
+      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
     }
   });
+}
 
 export const linkGoogleIdentity = async () =>
   (authClient as any).linkIdentity({
