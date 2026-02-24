@@ -1,4 +1,4 @@
-import { FormEvent, type CSSProperties, useMemo, useState } from "react";
+import { FormEvent, type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
@@ -68,8 +68,12 @@ const detectCountryCode = () => {
 
 const formatPhoneNumber = (value: string) => {
   const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length === 0) {
+    return "";
+  }
+
   if (digits.length < 4) {
-    return digits;
+    return `(${digits}`;
   }
 
   if (digits.length < 7) {
@@ -120,12 +124,35 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("Enter your number to start.");
+  const countrySelectRef = useRef<HTMLDivElement | null>(null);
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
   const sortedCountryOptions = useMemo(
     () => [selectedCountryOption, ...COUNTRY_OPTIONS.filter((option) => option.code !== selectedCountryOption.code)],
     [selectedCountryOption]
   );
+
+  useEffect(() => {
+    if (!countryMenuOpen) {
+      return;
+    }
+
+    const closeIfOutside = (event: MouseEvent | FocusEvent) => {
+      if (countrySelectRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setCountryMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeIfOutside);
+    document.addEventListener("focusin", closeIfOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", closeIfOutside);
+      document.removeEventListener("focusin", closeIfOutside);
+    };
+  }, [countryMenuOpen]);
+
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
 
@@ -199,7 +226,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               <label style={{ color: theme.colors.textSecondary }}>
                 Mobile number
                 <div style={phoneInputGroup(theme)}>
-                  <div style={countrySelectWrapper}>
+                  <div style={countrySelectWrapper} ref={countrySelectRef}>
                     <button type="button" onClick={() => setCountryMenuOpen((open) => !open)} style={countrySelectTrigger(theme)} aria-haspopup="listbox" aria-expanded={countryMenuOpen}>
                       <span>{selectedCountryOption.flag}</span>
                       <span>{`(${selectedCountryOption.dialCode})`}</span>
@@ -227,7 +254,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                   <input
                     value={formattedPhone}
                     onChange={(event) => setFormattedPhone(formatPhoneNumber(event.target.value))}
-                    placeholder="(555) 123-4567"
+                    placeholder="(___) ___-____"
                     inputMode="numeric"
                     autoComplete="tel-national"
                     maxLength={14}
@@ -298,7 +325,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                 <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.5-5.2l-6.2-5.2C29.3 35.1 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/>
                 <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.3 5.4-6 6.9l.1-.1 6.2 5.2C35.2 40.3 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
               </svg>
-              <span>Sign in with Google</span>
+              <span>Continue with Google</span>
             </button>
             <button type="button" style={emailButton(theme)} onClick={() => setAuthView("email")}>
               Continue with Email
@@ -329,7 +356,7 @@ const inputStyle = (theme: AppTheme): CSSProperties => ({
 
 const phoneInputGroup = (theme: AppTheme): CSSProperties => ({
   display: "grid",
-  gridTemplateColumns: "minmax(112px, 132px) minmax(0, 1fr)",
+  gridTemplateColumns: "minmax(67px, 79px) minmax(0, 1fr)",
   gap: spacingTokens.xs,
   marginTop: 6
 });
@@ -383,7 +410,8 @@ const countryMenuOption = (theme: AppTheme, selected: boolean): CSSProperties =>
 const phoneNumberInputStyle = (theme: AppTheme): CSSProperties => ({
   ...inputStyle(theme),
   marginTop: 0,
-  fontVariantNumeric: "tabular-nums"
+  fontVariantNumeric: "tabular-nums",
+  fontFamily: "monospace"
 });
 
 const smsButton = (theme: AppTheme): CSSProperties => ({
@@ -413,9 +441,9 @@ const emailButton = (theme: AppTheme): CSSProperties => ({
 const socialBaseButton: CSSProperties = {
   width: "min(360px, 100%)",
   justifySelf: "center",
-  borderRadius: 9999,
+  borderRadius: radiusTokens.md,
   padding: "12px 14px",
-  fontWeight: 500,
+  fontWeight: Number(typographyTokens.weight.semibold),
   fontSize: typographyTokens.size.body,
   cursor: "pointer",
   display: "inline-flex",
@@ -423,7 +451,7 @@ const socialBaseButton: CSSProperties = {
   justifyContent: "center",
   gap: 10,
   lineHeight: "20px",
-  fontFamily: "Roboto, Arial, sans-serif"
+  fontFamily: "inherit"
 };
 
 const googleButton = (_theme: AppTheme): CSSProperties => ({
