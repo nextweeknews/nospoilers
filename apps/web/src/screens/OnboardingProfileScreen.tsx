@@ -3,6 +3,8 @@ import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import { authService } from "../services/authClient";
 import { supabaseClient } from "../services/supabaseClient";
+import { checkUsernameAvailability } from "../services/username";
+import { isUsernameFormatValid, normalizeUsername } from "../services/usernameValidation";
 
 type OnboardingProfileScreenProps = {
   user: AuthUser;
@@ -23,12 +25,8 @@ const validateUsername = (value: string): UsernameFeedback => {
     return { tone: "neutral", message: "" };
   }
 
-  if (value.length < 3) {
-    return { tone: "error", message: "Usernames must be 3+ characters." };
-  }
-
-  if (value.length > 16) {
-    return { tone: "error", message: "Usernames must be 3-16 characters." };
+  if (!isUsernameFormatValid(value)) {
+    return { tone: "error", message: "Use 3-16 chars: letters, numbers, underscore." };
   }
 
   return { tone: "neutral", message: "" };
@@ -49,7 +47,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
 
   useEffect(() => {
     let active = true;
-    const normalized = username.trim().toLowerCase();
+    const normalized = normalizeUsername(username);
     const localValidation = validateUsername(normalized);
 
     if (!normalized) {
@@ -68,20 +66,21 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     const timeout = window.setTimeout(() => {
       setCheckingUsername(true);
       void (async () => {
-        const [availability, dbResult] = await Promise.all([
-          authService.checkUsernameAvailability(normalized),
-          supabaseClient.from("users").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
-        ]);
+        const availability = await checkUsernameAvailability(normalized);
 
         if (!active) {
           return;
         }
 
         setCheckingUsername(false);
-        const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
-        const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
+        const unavailable = !availability.available && normalized !== user.usernameNormalized;
 
-        if (unavailableInAuth || takenInDb) {
+        if (availability.error) {
+          setUsernameFeedback({ tone: "error", message: "Could not check username right now." });
+          return;
+        }
+
+        if (unavailable) {
           setUsernameFeedback({ tone: "error", message: "This username is not available." });
           return;
         }
@@ -94,11 +93,11 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [username, user.id, user.usernameNormalized]);
+  }, [username, user.usernameNormalized]);
 
   const submitProfile = async (skipOptional: boolean) => {
     const nextDisplayName = displayName.trim();
-    const nextUsername = username.trim().toLowerCase();
+    const nextUsername = normalizeUsername(username);
 
     if (!nextUsername) {
       setFieldErrors((prev) => ({ ...prev, username: "Username is required." }));
@@ -115,8 +114,13 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
     setFieldErrors((prev) => ({ ...prev, general: undefined }));
 
     try {
-      const availability = await authService.checkUsernameAvailability(nextUsername);
-      if (!availability.available && availability.normalized !== user.usernameNormalized) {
+      const availability = await checkUsernameAvailability(nextUsername);
+      if (availability.error) {
+        setFieldErrors((prev) => ({ ...prev, general: "Could not check username right now." }));
+        return;
+      }
+
+      if (!availability.available && nextUsername !== user.usernameNormalized) {
         setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
         return;
       }
@@ -218,7 +222,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
             style={buttonStyle(theme)}
             disabled={saving || checkingUsername || usernameFeedback.tone === "error" || !username.trim()}
             onClick={() => {
-              const nextUsername = username.trim().toLowerCase();
+              const nextUsername = normalizeUsername(username);
               const usernameValidation = validateUsername(nextUsername);
 
               if (!nextUsername) {
