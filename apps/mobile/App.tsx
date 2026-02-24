@@ -77,6 +77,7 @@ export default function App() {
   const [authResolved, setAuthResolved] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showCreateGroupSheet, setShowCreateGroupSheet] = useState(false);
+  const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
   const colorScheme = useColorScheme();
   const theme = createTheme(resolveThemePreference(colorScheme === "dark" ? "dark" : "light", themePreference));
 
@@ -171,7 +172,7 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.container, { padding: spacingTokens.lg }]}>
-        <AppText style={[styles.configText, { color: theme.colors.textSecondary }]}> 
+        <AppText style={[styles.configText, { color: theme.colors.textSecondary }]}>
           Env {mobileConfig.environment} · API {mobileConfig.apiBaseUrl} · Auth {mobileConfig.authClientId}
         </AppText>
         {!authResolved ? (
@@ -193,6 +194,17 @@ export default function App() {
           />
         ) : (
           <>
+            <View style={styles.headerRow}>
+              <AppText style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>NoSpoilers</AppText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Create post"
+                onPress={() => setShowCreatePostSheet(true)}
+                style={[styles.createPostButton, { backgroundColor: theme.colors.accent }]}
+              >
+                <AppText style={[styles.createPostButtonLabel, { color: theme.colors.accentText }]}>+</AppText>
+              </Pressable>
+            </View>
             {activeTab === "profile" ? (
               <ProfileSettingsScreen
                 user={currentUser}
@@ -243,6 +255,17 @@ export default function App() {
                 </View>
               </View>
             </Modal>
+            <Modal visible={showCreatePostSheet} transparent animationType="slide" onRequestClose={() => setShowCreatePostSheet(false)}>
+              <View style={styles.modalBackdrop}>
+                <View style={[styles.modalCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <AppText style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>Create post</AppText>
+                  <AppText style={[styles.modalBody, { color: theme.colors.textSecondary }]}>This placeholder sheet confirms the create-post flow is wired. Composer UI is coming next.</AppText>
+                  <Pressable onPress={() => setShowCreatePostSheet(false)} style={[styles.modalButton, { backgroundColor: theme.colors.accent }]}>
+                    <AppText style={{ color: theme.colors.accentText, fontWeight: "700" }}>Close</AppText>
+                  </Pressable>
+                </View>
+              </View>
+            </Modal>
           </>
         )}
       </View>
@@ -256,6 +279,10 @@ const styles = StyleSheet.create({
   configText: { fontSize: 12 },
   authLoadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
   authLoadingText: { fontSize: 14 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerTitle: { fontSize: 20, fontWeight: "700" },
+  createPostButton: { width: 44, height: 44, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  createPostButtonLabel: { fontSize: 28, fontWeight: "700", lineHeight: 30 },
   placeholderCard: { flex: 1, borderWidth: 1, borderRadius: 16, padding: spacingTokens.lg, gap: spacingTokens.sm },
   placeholderTitle: { fontSize: 18, fontWeight: "700" },
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)", padding: spacingTokens.lg },
