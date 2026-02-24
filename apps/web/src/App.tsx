@@ -14,6 +14,7 @@ import {
 import {
   buildPostPreviewText,
   mapAvatarPathToUiValue,
+  resolveSingleGroupAudience,
   type SupabaseGroupRow,
   type SupabasePostRow,
   type SupabaseUserProfileRow
@@ -734,10 +735,15 @@ export const App = () => {
             return;
           }
 
+          const audience = resolveSingleGroupAudience({
+            groupId: payload.group_id,
+            isPublic: payload.public
+          });
+
           const postInsertPayload: Record<string, unknown> = {
             author_user_id: currentUser.id,
             body_text: payload.body_text,
-            group_id: payload.group_id,
+            group_id: audience.groupId,
             catalog_item_id: payload.catalog_item_id,
             progress_unit_id: payload.progress_unit_id,
             tenor_gif_id: payload.tenor_gif_id,
