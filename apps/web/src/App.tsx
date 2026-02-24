@@ -1,10 +1,12 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import { createTheme, elevationTokens, radiusTokens, resolveThemePreference, spacingTokens, type ThemeMode, type ThemePreference } from "@nospoilers/ui";
 import { GroupScreen } from "./screens/GroupScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
+import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
@@ -29,6 +31,22 @@ const getSystemMode = (): ThemeMode => (window.matchMedia("(prefers-color-scheme
 
 const hasCompleteProfile = (user: AuthUser): boolean => Boolean(user.displayName?.trim() && user.username?.trim() && user.avatarUrl?.trim());
 
+const mapUser = (user: User, session: Session): AuthUser => ({
+  id: user.id,
+  email: user.email,
+  primaryPhone: user.phone,
+  identities: (user.identities ?? []).map((identity) => ({
+    provider: identity.provider === "sms" ? "phone" : (identity.provider as "google" | "email"),
+    subject: identity.identity_id,
+    verified: Boolean(identity.last_sign_in_at)
+  })),
+  createdAt: user.created_at,
+  updatedAt: user.updated_at ?? user.created_at,
+  displayName: (user.user_metadata.full_name as string | undefined) ?? (user.user_metadata.name as string | undefined),
+  avatarUrl: user.user_metadata.avatar_url as string | undefined,
+  preferences: { themePreference: session.user.user_metadata.theme_preference as ThemePreference | undefined }
+});
+
 export const App = () => {
   const [mainView, setMainView] = useState<MainView>("feed");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,6 +62,8 @@ export const App = () => {
   const [feedStatus, setFeedStatus] = useState<LoadStatus>("loading");
   const [groupError, setGroupError] = useState<string>();
   const [feedError, setFeedError] = useState<string>();
+  const [authResolved, setAuthResolved] = useState(false);
+  const [authStatus, setAuthStatus] = useState<string>();
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -53,7 +73,34 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) {
+    const syncSession = async () => {
+      const { data } = await getSession();
+      if (data.session?.user) {
+        setCurrentUser(mapUser(data.session.user, data.session));
+      } else {
+        setCurrentUser(undefined);
+      }
+      setAuthResolved(true);
+    };
+
+    void syncSession();
+
+    const { data } = onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setCurrentUser(mapUser(session.user, session));
+      } else {
+        setCurrentUser(undefined);
+      }
+      setAuthResolved(true);
+    });
+
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authResolved || !currentUser) {
       setGroups([]);
       setPosts([]);
       setGroupStatus("loading");
@@ -122,7 +169,7 @@ export const App = () => {
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
 
-  if (!currentUser) {
+  if (!authResolved || !currentUser) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
         <LoginScreen onSignedIn={onSignedIn} theme={theme} />
@@ -219,12 +266,13 @@ export const App = () => {
               />
               <span style={{ letterSpacing: 1 }}>⋮</span>
             </button>
+            {authStatus ? <small style={{ color: theme.colors.textSecondary, justifySelf: "end" }}>{authStatus}</small> : null}
             {menuOpen ? (
               <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: 12, boxShadow: elevationTokens.low, overflow: "hidden", zIndex: 5 }}>
                 <button type="button" onClick={() => { setMainView("account"); setMenuOpen(false); }} style={menuItem(theme)}>
                   Account
                 </button>
-                <button type="button" onClick={() => { setMainView("feed"); setCurrentUser(undefined); }} style={menuItem(theme)}>
+                <button type="button" onClick={async () => { const { error } = await signOut(); if (error) { setAuthStatus(`Unable to sign out: ${error.message}`); return; } setAuthStatus("Signed out."); setMainView("feed"); setCurrentUser(undefined); }} style={menuItem(theme)}>
                   Log out
                 </button>
               </div>
