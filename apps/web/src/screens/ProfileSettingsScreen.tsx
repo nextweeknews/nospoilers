@@ -1,23 +1,60 @@
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
-import { authService } from "../services/authClient";
+import { authService, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink } from "../services/authClient";
 
 type ProfileSettingsScreenProps = {
-  userId?: string;
+  user?: AuthUser;
   onProfileUpdated: (user: AuthUser) => void;
   themePreference: ThemePreference;
   onThemePreferenceChanged: (next: ThemePreference) => void;
   theme: AppTheme;
 };
 
-export const ProfileSettingsScreen = ({ userId, onProfileUpdated, themePreference, onThemePreferenceChanged, theme }: ProfileSettingsScreenProps) => {
+export const ProfileSettingsScreen = ({ user, onProfileUpdated, themePreference, onThemePreferenceChanged, theme }: ProfileSettingsScreenProps) => {
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [avatarFileName, setAvatarFileName] = useState("avatar.png");
+  const [linkPhone, setLinkPhone] = useState("");
+  const [linkEmail, setLinkEmail] = useState("");
+  const [linkPassword, setLinkPassword] = useState("");
   const [status, setStatus] = useState("Sign in to manage your profile.");
 
-  if (!userId) {
+  const identityStatus = useMemo(() => {
+    const providers = new Set((user?.identities ?? []).map((identity) => identity.provider));
+    return {
+      phone: providers.has("phone"),
+      google: providers.has("google"),
+      email: providers.has("email")
+    };
+  }, [user]);
+
+  const refreshIdentityState = async () => {
+    if (!user) {
+      return;
+    }
+
+    const { data, error } = await getAuthUser();
+    if (error || !data.user) {
+      setStatus(error?.message ?? "Unable to refresh identity status.");
+      return;
+    }
+
+    const identities = (data.user.identities ?? []).map((identity) => ({
+      provider: identity.provider === "sms" ? "phone" : (identity.provider as "phone" | "google" | "email"),
+      subject: identity.identity_id,
+      verified: Boolean(identity.last_sign_in_at)
+    }));
+
+    onProfileUpdated({
+      ...user,
+      email: data.user.email,
+      primaryPhone: data.user.phone,
+      identities
+    });
+  };
+
+  if (!user) {
     return <section style={cardStyle(theme)}>Sign in first, then open Account to edit your profile.</section>;
   }
 
@@ -30,9 +67,9 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, themePreferenc
         <button
           style={buttonStyle(theme)}
           onClick={async () => {
-            const user = await authService.updateProfile(userId, { displayName });
-            setStatus(`Display name saved: ${user.displayName ?? "(none)"}`);
-            onProfileUpdated(user);
+            const updatedUser = await authService.updateProfile(user.id, { displayName });
+            setStatus(`Display name saved: ${updatedUser.displayName ?? "(none)"}`);
+            onProfileUpdated(updatedUser);
           }}
         >
           Save display name
@@ -49,10 +86,10 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, themePreferenc
               setStatus(`Username unavailable (${availability.reason ?? "unknown"}).`);
               return;
             }
-            await authService.reserveUsername(username, userId);
-            const user = await authService.updateProfile(userId, { username });
-            setStatus(`Username set to @${user.username}`);
-            onProfileUpdated(user);
+            await authService.reserveUsername(username, user.id);
+            const updatedUser = await authService.updateProfile(user.id, { username });
+            setStatus(`Username set to @${updatedUser.username}`);
+            onProfileUpdated(updatedUser);
           }}
         >
           Reserve + save username
@@ -66,8 +103,8 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, themePreferenc
           value={themePreference}
           onChange={async (event) => {
             const next = event.target.value as ThemePreference;
-            const user = await authService.updateProfile(userId, { themePreference: next });
-            onProfileUpdated(user);
+            const updatedUser = await authService.updateProfile(user.id, { themePreference: next });
+            onProfileUpdated(updatedUser);
             onThemePreferenceChanged(next);
             setStatus(`Theme preference saved as ${next}.`);
           }}
@@ -83,26 +120,85 @@ export const ProfileSettingsScreen = ({ userId, onProfileUpdated, themePreferenc
         <button
           style={buttonStyle(theme)}
           onClick={async () => {
-            const upload = await authService.createAvatarUploadPlan(userId, {
+            const upload = await authService.createAvatarUploadPlan(user.id, {
               fileName: avatarFileName,
               contentType: "image/png",
               bytes: 220_000,
               width: 512,
               height: 512
             });
-            const user = await authService.finalizeAvatarUpload(userId, upload.uploadId, {
+            const updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
               contentType: "image/png",
               bytes: 220_000,
               width: 512,
               height: 512
             });
             setStatus(`Avatar updated via signed URL pipeline: ${upload.uploadUrl}`);
-            onProfileUpdated(user);
+            onProfileUpdated(updatedUser);
           }}
         >
           Update avatar
         </button>
       </div>
+
+      <section style={{ display: "grid", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
+        <h3 style={{ margin: 0 }}>Connected sign-in methods</h3>
+        <small style={{ color: theme.colors.textSecondary }}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</small>
+
+        <div style={rowStyle}>
+          <input value={linkPhone} onChange={(event) => setLinkPhone(event.target.value)} placeholder="+1 555 123 9876" style={inputStyle(theme)} />
+          <button
+            style={buttonStyle(theme)}
+            onClick={async () => {
+              await reauthenticateForIdentityLink();
+              const { error } = await linkPhoneIdentity(linkPhone);
+              if (error) {
+                setStatus(error.message);
+                return;
+              }
+              await refreshIdentityState();
+              setStatus("Phone link started. Verify OTP sent to complete linking.");
+            }}
+          >
+            Link phone
+          </button>
+        </div>
+
+        <button
+          style={buttonStyle(theme)}
+          onClick={async () => {
+            await reauthenticateForIdentityLink();
+            const { error } = await linkGoogleIdentity();
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            setStatus("Redirecting to Google to link identity...");
+          }}
+        >
+          Link Google
+        </button>
+
+        <div style={rowStyle}>
+          <input value={linkEmail} onChange={(event) => setLinkEmail(event.target.value)} placeholder="Email" style={inputStyle(theme)} />
+          <input value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
+          <button
+            style={buttonStyle(theme)}
+            onClick={async () => {
+              await reauthenticateForIdentityLink();
+              const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword);
+              if (error) {
+                setStatus(error.message);
+                return;
+              }
+              await refreshIdentityState();
+              setStatus("Email/password linked. Check your inbox if verification is required.");
+            }}
+          >
+            Link email/password
+          </button>
+        </div>
+      </section>
 
       <small style={{ color: theme.colors.success }}>{status}</small>
     </section>

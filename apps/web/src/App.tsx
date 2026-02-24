@@ -235,7 +235,7 @@ export const App = () => {
         <main style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.md, background: theme.colors.background }}>
           {mainView === "account" ? (
             <ProfileSettingsScreen
-              userId={currentUser.id}
+              user={currentUser}
               onProfileUpdated={setCurrentUser}
               onThemePreferenceChanged={onThemePreferenceChanged}
               themePreference={themePreference}
