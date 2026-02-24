@@ -202,15 +202,16 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   }, [resendAvailableAtMs]);
 
   // Handle callback URL state (OAuth / password recovery) and auth events after redirects.
-  useEffect(() => {
-    let active = true;
+useEffect(() => {
+  let active = true;
 
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const searchParams = new URLSearchParams(window.location.search);
-    const callbackType = hashParams.get("type") ?? searchParams.get("type");
-    const oauthCode = searchParams.get("code");
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(window.location.search);
+  const callbackType = hashParams.get("type") ?? searchParams.get("type");
+  const oauthCode = searchParams.get("code");
 
-    void (async () => {
+  void (async () => {
+    try {
       if (oauthCode) {
         setStatus({ message: "Finishing Google sign-in…", tone: "info" });
 
@@ -219,21 +220,43 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         if (!active) return;
 
         if (error) {
-          console.error("exchangeCodeForSession failed:", error);
+          console.error("exchangeCodeForSession returned error:", {
+            message: error.message,
+            status: (error as any).status,
+            code: (error as any).code
+          });
           setStatus({ message: `Unable to finish Google sign-in. ${error.message}`, tone: "error" });
           return;
         }
 
+        // Remove ?code=... after successful exchange
         const cleanUrl = `${window.location.origin}${window.location.pathname}`;
         window.history.replaceState({}, document.title, cleanUrl);
       }
+
+      if (!active) return;
 
       if (callbackType === "recovery") {
         setAuthView("email");
         setIsPasswordResetMode(true);
         setStatus({ message: "Enter a new password to finish resetting your password.", tone: "info" });
       }
-    })();
+    } catch (err) {
+      if (!active) return;
+
+      console.error("exchangeCodeForSession threw:", err);
+
+      const message =
+        err instanceof Error ? err.message : "Unknown error while finishing Google sign-in.";
+
+      setStatus({ message: `Unable to finish Google sign-in. ${message}`, tone: "error" });
+    }
+  })();
+
+  return () => {
+    active = false;
+  };
+}, []);
 
     const { data: authListener } = onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
