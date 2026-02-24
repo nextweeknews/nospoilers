@@ -234,7 +234,18 @@ export const App = () => {
     setAuthResolved(true);
   };
 
-  if (!authResolved || !currentUser) {
+  if (!authResolved) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
+        <div style={{ display: "grid", gap: spacingTokens.sm, justifyItems: "center", color: theme.colors.textSecondary }}>
+          <progress aria-label="Signing you in" style={{ width: 120 }} />
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>Signing you in…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: theme.colors.background, padding: spacingTokens.lg }}>
         <LoginScreen onSignedIn={onSignedIn} theme={theme} />

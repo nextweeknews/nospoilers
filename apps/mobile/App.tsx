@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
+import { ActivityIndicator, SafeAreaView, StyleSheet, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
 import { createTheme, resolveThemePreference, spacingTokens, type ThemePreference } from "@nospoilers/ui";
@@ -173,7 +173,12 @@ export default function App() {
         <AppText style={[styles.configText, { color: theme.colors.textSecondary }]}> 
           Env {mobileConfig.environment} · API {mobileConfig.apiBaseUrl} · Auth {mobileConfig.authClientId}
         </AppText>
-        {!authResolved || !currentUser ? (
+        {!authResolved ? (
+          <View style={styles.authLoadingState}>
+            <ActivityIndicator color={theme.colors.accent} />
+            <AppText style={[styles.authLoadingText, { color: theme.colors.textSecondary }]}>Signing you in…</AppText>
+          </View>
+        ) : !currentUser ? (
           <LoginScreen onSignedIn={onSignedIn} theme={theme} />
         ) : needsOnboarding ? (
           <OnboardingProfileScreen
@@ -219,5 +224,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   container: { flex: 1, gap: 12 },
-  configText: { fontSize: 12 }
+  configText: { fontSize: 12 },
+  authLoadingState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
+  authLoadingText: { fontSize: 14 }
 });
