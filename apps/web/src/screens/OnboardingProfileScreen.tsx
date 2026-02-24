@@ -152,10 +152,16 @@ export const OnboardingProfileScreen = ({
         return;
       }
   
-      // Reserve only if truly available and changing username.
-      if (availability.available && !isCurrentUsersUsername) {
-        console.log("[onboarding] reserveUsername");
-        await authService.reserveUsername(nextUsername, user.id);
+     if (availability.available && !isCurrentUsersUsername) {
+        try {
+          console.log("[onboarding] reserveUsername start", { nextUsername, userId: user.id });
+          await authService.reserveUsername(nextUsername, user.id);
+          console.log("[onboarding] reserveUsername ok");
+        } catch (error) {
+          // Do not block onboarding on reservation failure.
+          // DB uniqueness + final upsert remain the source of truth.
+          console.warn("[onboarding] reserveUsername failed, continuing without reservation", error);
+        }
       }
   
       console.log("[onboarding] updateProfile");
