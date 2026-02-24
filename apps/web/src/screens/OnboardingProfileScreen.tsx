@@ -36,228 +36,267 @@ const validateUsername = (value: string): UsernameFeedback => {
 
 export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onChooseDifferentLoginMethod }: OnboardingProfileScreenProps) => {
   const defaultStatus = "Finish your profile to continue.";
+  const [step, setStep] = useState<1 | 2>(1);
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [username, setUsername] = useState((user.username ?? "").toLowerCase());
   const [avatarFileName, setAvatarFileName] = useState<string>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState(defaultStatus);
   const [saving, setSaving] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; general?: string }>({});
   const [usernameFeedback, setUsernameFeedback] = useState<UsernameFeedback>({ tone: "neutral", message: "" });
 
   useEffect(() => {
     let active = true;
     const normalized = username.trim().toLowerCase();
     const localValidation = validateUsername(normalized);
+
     if (!normalized) {
+      setCheckingUsername(false);
       setUsernameFeedback({ tone: "neutral", message: "" });
       return;
     }
 
-    if (normalized.length < 3) {
-      const timeout = window.setTimeout(() => {
-        if (!active) {
-          return;
-        }
-
-        setUsernameFeedback(validateUsername(normalized));
-      }, 100);
-
-      return () => {
-        active = false;
-        window.clearTimeout(timeout);
-      };
-    }
-
     if (localValidation.tone === "error") {
+      setCheckingUsername(false);
       setUsernameFeedback(localValidation);
       return;
     }
 
+    setCheckingUsername(false);
+    const timeout = window.setTimeout(() => {
+      setCheckingUsername(true);
+      void (async () => {
+        const [availability, dbResult] = await Promise.all([
+          authService.checkUsernameAvailability(normalized),
+          supabaseClient.from("users").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
+        ]);
 
-    void (async () => {
-      const [availability, dbResult] = await Promise.all([
-        authService.checkUsernameAvailability(normalized),
-        supabaseClient.from("users").select("id", { count: "exact", head: true }).eq("username", normalized).neq("id", user.id)
-      ]);
+        if (!active) {
+          return;
+        }
 
-      if (!active) {
-        return;
-      }
+        setCheckingUsername(false);
+        const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
+        const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
 
-      const takenInDb = !dbResult.error && (dbResult.count ?? 0) > 0;
-      const unavailableInAuth = !availability.available && availability.normalized !== user.usernameNormalized;
+        if (unavailableInAuth || takenInDb) {
+          setUsernameFeedback({ tone: "error", message: "This username is not available." });
+          return;
+        }
 
-      if (unavailableInAuth || takenInDb) {
-        setUsernameFeedback({ tone: "error", message: "This username is not available." });
-        return;
-      }
-
-      setUsernameFeedback({ tone: "success", message: "This username is available." });
-    })();
+        setUsernameFeedback({ tone: "success", message: "This username is available." });
+      })();
+    }, 350);
 
     return () => {
       active = false;
+      window.clearTimeout(timeout);
     };
   }, [username, user.id, user.usernameNormalized]);
+
+  const submitProfile = async (skipOptional: boolean) => {
+    const nextDisplayName = displayName.trim();
+    const nextUsername = username.trim().toLowerCase();
+
+    if (!nextUsername) {
+      setFieldErrors((prev) => ({ ...prev, username: "Username is required." }));
+      return;
+    }
+
+    const usernameValidation = validateUsername(nextUsername);
+    if (usernameValidation.tone === "error") {
+      setFieldErrors((prev) => ({ ...prev, username: usernameValidation.message }));
+      return;
+    }
+
+    setSaving(true);
+    setFieldErrors((prev) => ({ ...prev, general: undefined }));
+
+    try {
+      const availability = await authService.checkUsernameAvailability(nextUsername);
+      if (!availability.available && availability.normalized !== user.usernameNormalized) {
+        setFieldErrors((prev) => ({ ...prev, username: "This username is not available." }));
+        return;
+      }
+
+      if (availability.available) {
+        await authService.reserveUsername(nextUsername, user.id);
+      }
+
+      let updatedUser = await authService.updateProfile(user.id, {
+        displayName: skipOptional ? nextUsername : nextDisplayName || nextUsername,
+        username: nextUsername
+      });
+
+      const profilePayload = {
+        id: user.id,
+        username: nextUsername,
+        display_name: skipOptional ? nextUsername : nextDisplayName || nextUsername,
+        email: user.email ?? null,
+        avatar_url: updatedUser.avatarUrl ?? null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: userInsertError } = await supabaseClient.from("users").insert(profilePayload);
+
+      if (userInsertError && userInsertError.code !== "23505") {
+        setFieldErrors((prev) => ({ ...prev, general: userInsertError.message }));
+        return;
+      }
+
+      if (!skipOptional && avatarFileName && isBlank(updatedUser.avatarUrl)) {
+        const upload = await authService.createAvatarUploadPlan(user.id, {
+          fileName: avatarFileName,
+          contentType: "image/png",
+          bytes: 220_000,
+          width: 512,
+          height: 512
+        });
+
+        updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
+          contentType: "image/png",
+          bytes: 220_000,
+          width: 512,
+          height: 512
+        });
+      }
+
+      const completedUser: AuthUser = updatedUser.username
+        ? updatedUser
+        : {
+            ...updatedUser,
+            username: nextUsername,
+            usernameNormalized: nextUsername
+          };
+
+      setStatus("Profile complete. Redirecting to the app…");
+      onProfileCompleted(completedUser);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <section style={cardStyle(theme)}>
       <h2 style={{ margin: 0, color: theme.colors.textPrimary }}>Complete your profile</h2>
+      <small style={{ color: theme.colors.textSecondary, fontWeight: 600 }}>Step {step} of 2</small>
       <p style={{ margin: 0, color: theme.colors.textSecondary }}>
-        Add a username to continue. Display name is optional and defaults to your username.
+        {step === 1
+          ? "Pick a unique username so friends can find you and mentions stay unambiguous."
+          : "Add optional profile details now, or skip and personalize later."}
       </p>
 
-      <label style={labelStyle(theme)}>
-        Username
-        <input
-          value={username}
-          onChange={(event) => {
-            const nextUsername = event.target.value.toLowerCase();
-            setUsername(nextUsername);
+      {step === 1 ? (
+        <>
+          <label style={labelStyle(theme)}>
+            Username
+            <input
+              value={username}
+              onChange={(event) => {
+                const nextUsername = event.target.value.toLowerCase();
+                setUsername(nextUsername);
+                setFieldErrors((prev) => ({ ...prev, username: undefined }));
 
-            if (validateUsername(nextUsername.trim()).tone !== "error") {
-              setStatus(defaultStatus);
-            }
-          }}
-          placeholder="Username"
-          maxLength={16}
-          style={inputStyle(theme)}
-        />
-        <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
-          {usernameFeedback.message}
-        </small>
-      </label>
+                if (validateUsername(nextUsername.trim()).tone !== "error") {
+                  setStatus(defaultStatus);
+                }
+              }}
+              placeholder="Username"
+              maxLength={16}
+              style={inputStyle(theme)}
+            />
+            {fieldErrors.username ? <small style={{ color: "#d14343" }}>{fieldErrors.username}</small> : null}
+            <small style={{ color: usernameFeedback.tone === "error" ? "#d14343" : usernameFeedback.tone === "success" ? theme.colors.success : theme.colors.textSecondary }}>
+              {checkingUsername ? "Checking availability…" : usernameFeedback.message}
+            </small>
+          </label>
 
-      <label style={labelStyle(theme)}>
-        Display name (optional)
-        <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
-      </label>
+          <button
+            type="button"
+            style={buttonStyle(theme)}
+            disabled={saving || checkingUsername || usernameFeedback.tone === "error" || !username.trim()}
+            onClick={() => {
+              const nextUsername = username.trim().toLowerCase();
+              const usernameValidation = validateUsername(nextUsername);
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        style={{ display: "none" }}
-        onChange={(event) => {
-          const selected = event.target.files?.[0];
-          setAvatarFileName(selected?.name);
-        }}
-      />
+              if (!nextUsername) {
+                setFieldErrors((prev) => ({ ...prev, username: "Username is required." }));
+                return;
+              }
 
-      <div
-        style={uploadBoxStyle(theme)}
-        role="button"
-        tabIndex={0}
-        onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            fileInputRef.current?.click();
-          }
-        }}
-        onDragOver={(event) => {
-          event.preventDefault();
-        }}
-        onDrop={(event) => {
-          event.preventDefault();
-          const selected = event.dataTransfer.files?.[0];
-          setAvatarFileName(selected?.name);
-        }}
-      >
-        <strong style={{ color: theme.colors.textPrimary }}>Upload avatar (optional)</strong>
-        <span style={{ color: theme.colors.textSecondary }}>Drag and drop an image here, or click to upload from your computer.</span>
-        <small style={{ color: theme.colors.textSecondary }}>Selected: {avatarFileName ?? "No file selected. Using placeholder avatar."}</small>
-      </div>
+              if (usernameValidation.tone === "error") {
+                setFieldErrors((prev) => ({ ...prev, username: usernameValidation.message }));
+                return;
+              }
 
-      <button
-        type="button"
-        style={buttonStyle(theme)}
-        disabled={saving}
-        onClick={async () => {
-          const nextDisplayName = displayName.trim();
-          const nextUsername = username.trim().toLowerCase();
+              if (usernameFeedback.tone === "error") {
+                setFieldErrors((prev) => ({ ...prev, username: usernameFeedback.message }));
+                return;
+              }
 
-          if (!nextUsername) {
-            setStatus("Username is required.");
-            return;
-          }
+              setStep(2);
+            }}
+          >
+            Continue
+          </button>
+        </>
+      ) : (
+        <>
+          <label style={labelStyle(theme)}>
+            Display name (optional)
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
+          </label>
 
-          if (validateUsername(nextUsername).tone === "error") {
-            setStatus(validateUsername(nextUsername).message);
-            return;
-          }
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const selected = event.target.files?.[0];
+              setAvatarFileName(selected?.name);
+            }}
+          />
 
-          setSaving(true);
-          try {
-            const availability = await authService.checkUsernameAvailability(nextUsername);
-            if (!availability.available && availability.normalized !== user.usernameNormalized) {
-              setStatus("This username is not available.");
-              return;
-            }
+          <div
+            style={uploadBoxStyle(theme)}
+            role="button"
+            tabIndex={0}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const selected = event.dataTransfer.files?.[0];
+              setAvatarFileName(selected?.name);
+            }}
+          >
+            <strong style={{ color: theme.colors.textPrimary }}>Upload avatar (optional)</strong>
+            <span style={{ color: theme.colors.textSecondary }}>Drag and drop an image here, or click to upload from your computer.</span>
+            <small style={{ color: theme.colors.textSecondary }}>Selected: {avatarFileName ?? "No file selected. Using placeholder avatar."}</small>
+          </div>
 
-            if (availability.available) {
-              await authService.reserveUsername(nextUsername, user.id);
-            }
-
-            let updatedUser = await authService.updateProfile(user.id, {
-              displayName: nextDisplayName || nextUsername,
-              username: nextUsername
-            });
-
-            const profilePayload = {
-              id: user.id,
-              username: nextUsername,
-              display_name: nextDisplayName || nextUsername,
-              email: user.email ?? null,
-              avatar_url: updatedUser.avatarUrl ?? null,
-              updated_at: new Date().toISOString()
-            };
-
-            const { error: userInsertError } = await supabaseClient.from("users").insert(profilePayload);
-
-            if (userInsertError && userInsertError.code !== "23505") {
-              setStatus(userInsertError.message);
-              return;
-            }
-
-            if (avatarFileName && isBlank(updatedUser.avatarUrl)) {
-              const upload = await authService.createAvatarUploadPlan(user.id, {
-                fileName: avatarFileName,
-                contentType: "image/png",
-                bytes: 220_000,
-                width: 512,
-                height: 512
-              });
-
-              updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
-                contentType: "image/png",
-                bytes: 220_000,
-                width: 512,
-                height: 512
-              });
-            }
-
-            const completedUser: AuthUser = updatedUser.username
-              ? updatedUser
-              : {
-                  ...updatedUser,
-                  username: nextUsername,
-                  usernameNormalized: nextUsername
-                };
-
-            setStatus("Profile complete. Redirecting to the app…");
-            onProfileCompleted(completedUser);
-          } finally {
-            setSaving(false);
-          }
-        }}
-      >
-        {saving ? "Saving…" : "Save and continue"}
-      </button>
+          <button type="button" style={buttonStyle(theme)} disabled={saving} onClick={() => void submitProfile(false)}>
+            {saving ? "Saving…" : "Save and continue"}
+          </button>
+          <button type="button" style={secondaryButtonStyle(theme)} disabled={saving} onClick={() => void submitProfile(true)}>
+            Skip for now
+          </button>
+        </>
+      )}
 
       <button
         type="button"
-        style={secondaryButtonStyle(theme)}
+        style={escapeButtonStyle(theme)}
         onClick={() => {
           void onChooseDifferentLoginMethod();
         }}
@@ -265,6 +304,7 @@ export const OnboardingProfileScreen = ({ user, theme, onProfileCompleted, onCho
         Choose a different login method
       </button>
 
+      {fieldErrors.general ? <small style={{ color: "#d14343" }}>{fieldErrors.general}</small> : null}
       <small style={{ color: theme.colors.success }}>{status}</small>
     </section>
   );
@@ -321,5 +361,16 @@ const secondaryButtonStyle = (theme: AppTheme): CSSProperties => ({
   border: `1px solid ${theme.colors.border}`,
   padding: "10px 12px",
   fontWeight: 600,
+  cursor: "pointer"
+});
+
+const escapeButtonStyle = (theme: AppTheme): CSSProperties => ({
+  background: "transparent",
+  color: theme.colors.textSecondary,
+  border: "none",
+  textAlign: "left",
+  padding: "4px 0",
+  fontWeight: 500,
+  textDecoration: "underline",
   cursor: "pointer"
 });
