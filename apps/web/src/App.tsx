@@ -171,7 +171,7 @@ export const App = () => {
   const [createGroupError, setCreateGroupError] = useState<string>();
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
-  const [showCatalogSearchSheet, setShowCatalogSearchSheet] = useState(false);
+  const [show, setShow] = useState(false);
   const [catalogSearchContext, setCatalogSearchContext] = useState<CatalogSearchContext | null>(null);
   const [catalogSearchError, setCatalogSearchError] = useState<string>();
   const [pendingPostCatalogSelection, setPendingPostCatalogSelection] = useState<PendingPostCatalogSelection | null>(null);
@@ -194,6 +194,8 @@ export const App = () => {
     setCurrentUser(mapped.user);
     setNeedsOnboarding(mapped.needsOnboarding);
   };
+
+  const FUNCTIONS_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_URL ?? "";
 
   const refreshCatalogItems = async () => {
     const { data, error } = await supabaseClient
@@ -1080,9 +1082,8 @@ export const App = () => {
             setCatalogSearchError(message);
             console.error("[app] catalog search/import failed", message);
           }}
-          // If your backend is namespaced, uncomment these:
-          // searchEndpoint="/api/search/catalog"
-          // importEndpoint="/api/catalog/import"
+          searchEndpoint={`${FUNCTIONS_URL}/search-catalog`}
+          importEndpoint={`${FUNCTIONS_URL}/catalog-import`}
         />
       ) : null}
 
