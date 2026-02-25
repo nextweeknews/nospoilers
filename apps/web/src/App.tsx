@@ -171,7 +171,7 @@ export const App = () => {
   const [createGroupError, setCreateGroupError] = useState<string>();
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
-  const [show, setShow] = useState(false);
+  const [showCatalogSearchSheet, setShowCatalogSearchSheet] = useState(false);
   const [catalogSearchContext, setCatalogSearchContext] = useState<CatalogSearchContext | null>(null);
   const [catalogSearchError, setCatalogSearchError] = useState<string>();
   const [pendingPostCatalogSelection, setPendingPostCatalogSelection] = useState<PendingPostCatalogSelection | null>(null);
