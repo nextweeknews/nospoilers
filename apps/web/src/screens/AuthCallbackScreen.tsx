@@ -30,6 +30,28 @@ const buildReturnPath = (): string => {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+const clearSupabaseAuthStorageForProject = () => {
+  try {
+    const projectRef = "zwnacudkxhyekcleqoun"; // from your lock key
+    const prefixes = [
+      `sb-${projectRef}-auth-token`,
+      `sb-${projectRef}-auth-token-code-verifier`
+    ];
+
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      for (let i = storage.length - 1; i >= 0; i -= 1) {
+        const key = storage.key(i);
+        if (!key) continue;
+        if (prefixes.some((prefix) => key.startsWith(prefix))) {
+          storage.removeItem(key);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("[auth-callback] failed to clear auth storage", error);
+  }
+};
+
 export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
   const [status, setStatus] = useState<CallbackStatus>("working");
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -131,13 +153,22 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
         console.log("[auth-callback] exchange succeeded -> mark done and redirect");
         sessionStorage.setItem(exchangeGuardKey, "done");
         sessionStorage.setItem(exchangeGuardTsKey, String(Date.now()));
+        
+        // Redirect to a clean URL (no code param) immediately.
         window.location.replace(returnPath);
+        return;
       } catch (err) {
         if (!active) return;
 
         console.error("[auth-callback] unexpected error", err);
 
         const message = err instanceof Error ? err.message : "Unknown error during code exchange.";
+
+        if (message.includes("Navigator LockManager lock") || message.includes("NavigatorLockAcquireTimeoutError")) {
+          console.warn("[auth-callback] lock timeout detected; clearing stale auth storage");
+          clearSupabaseAuthStorageForProject();
+        }
+        
         setStatus("error");
         setErrorMessage(`Unable to finish sign-in: ${message}`);
       }
@@ -174,7 +205,15 @@ export const AuthCallbackScreen = ({ theme }: AuthCallbackScreenProps) => {
 
         <button
           type="button"
-          onClick={() => window.location.assign("/")}
+          onClick={() => {
+            // Clear any stale callback guards for the current code if present.
+            const code = new URLSearchParams(window.location.search).get("code");
+            if (code) {
+              sessionStorage.removeItem(`oauth-code-exchange:${code}`);
+              sessionStorage.removeItem(`oauth-code-exchange:${code}:ts`);
+            }
+            window.location.assign("/");
+          }}
           style={{
             border: "none",
             borderRadius: 10,
