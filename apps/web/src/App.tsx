@@ -28,6 +28,11 @@ import { PublicFeedScreen } from "./screens/PublicFeedScreen";
 import { NotificationsScreen } from "./screens/NotificationsScreen";
 import { ProfileTabScreen } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
+import {
+  CatalogSearchSheet,
+  type CatalogImportResponse,
+  type CatalogSearchResult
+} from "./components/CatalogSearchSheet";
 import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
 import { profileNeedsOnboarding } from "./profileOnboarding";
@@ -47,6 +52,16 @@ type PostEntity = SupabasePostRow & {
 };
 
 type OptionRow = { id: string; title: string };
+
+type CatalogSearchContext =
+  | { mode: "post" }
+  | { mode: "group"; groupId: string }
+  | { mode: "profile" };
+
+type PendingPostCatalogSelection = {
+  catalogItemId: string;
+  catalogItemLabel: string;
+};
 
 const getSystemMode = (): ThemeMode => {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -156,6 +171,11 @@ export const App = () => {
   const [createGroupError, setCreateGroupError] = useState<string>();
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
+  const [showCatalogSearchSheet, setShowCatalogSearchSheet] = useState(false);
+  const [catalogSearchContext, setCatalogSearchContext] = useState<CatalogSearchContext | null>(null);
+  const [catalogSearchError, setCatalogSearchError] = useState<string>();
+  const [pendingPostCatalogSelection, setPendingPostCatalogSelection] = useState<PendingPostCatalogSelection | null>(null);
+  const [selectedCatalogItemIdForProgress, setSelectedCatalogItemIdForProgress] = useState<string | null>(null);
   const [groupPosts, setGroupPosts] = useState<PostEntity[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [catalogItems, setCatalogItems] = useState<OptionRow[]>([]);
@@ -173,6 +193,86 @@ export const App = () => {
     const mapped = await mapUserWithProfile(session.user, session);
     setCurrentUser(mapped.user);
     setNeedsOnboarding(mapped.needsOnboarding);
+  };
+
+  const refreshCatalogItems = async () => {
+    const { data, error } = await supabaseClient
+      .from("catalog_items")
+      .select("id,title")
+      .order("updated_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error("[app] catalog_items load failed", error);
+      setCatalogItems([]);
+      return;
+    }
+
+    setCatalogItems((data as OptionRow[] | null) ?? []);
+  };
+
+  const loadProgressUnitsForCatalogItem = async (catalogItemId: string) => {
+    const { data, error } = await supabaseClient
+      .from("catalog_progress_units")
+      .select("id,title")
+      .eq("catalog_item_id", catalogItemId)
+      .order("sequence_index", { ascending: true })
+      .limit(500);
+
+    if (error) {
+      console.error("[app] catalog_progress_units load failed", error);
+      setProgressUnits([]);
+      return;
+    }
+
+    setProgressUnits((data as OptionRow[] | null) ?? []);
+  };
+
+  const openCatalogSearch = (context: CatalogSearchContext) => {
+    setCatalogSearchError(undefined);
+    setCatalogSearchContext(context);
+    setShowCatalogSearchSheet(true);
+  };
+
+  const closeCatalogSearch = () => {
+    setShowCatalogSearchSheet(false);
+    setCatalogSearchContext(null);
+  };
+
+  const handleCatalogImported = async (imported: CatalogImportResponse, selected: CatalogSearchResult) => {
+    const importedId = String(imported.catalog_item.id);
+    const importedTitle = imported.catalog_item.title;
+
+    setCatalogItems((prev) => {
+      const exists = prev.some((item) => item.id === importedId);
+      if (exists) return prev;
+      return [{ id: importedId, title: importedTitle }, ...prev];
+    });
+
+    void refreshCatalogItems();
+
+    if (catalogSearchContext?.mode === "post") {
+      setPendingPostCatalogSelection({
+        catalogItemId: importedId,
+        catalogItemLabel: importedTitle
+      });
+      setSelectedCatalogItemIdForProgress(importedId);
+      setShowCreatePostSheet(true);
+    }
+
+    // placeholders for later:
+    // if (catalogSearchContext?.mode === "group") { refresh group catalog list }
+    // if (catalogSearchContext?.mode === "profile") { refresh user library/progress list }
+
+    console.log("[app] catalog import success", {
+      importedCatalogItemId: importedId,
+      title: importedTitle,
+      source: selected.metadata_source,
+      sourceId: selected.source_id,
+      context: catalogSearchContext
+    });
+
+    closeCatalogSearch();
   };
 
   const pathname = window.location.pathname;
@@ -313,15 +413,19 @@ export const App = () => {
             console.error("[app] group feed load failed", groupFeedResult.error);
             setGroupPosts([]);
           } else {
-            setGroupPosts(((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
-              ...post,
-              previewText: buildPostPreviewText(post.body_text),
-              authorDisplayName: formatAuthorDisplayName((post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null),
-              authorAvatarUrl:
-                mapAvatarPathToUiValue(
-                  (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
-                ) ?? DEFAULT_AVATAR_PLACEHOLDER
-            })));
+            setGroupPosts(
+              ((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
+                ...post,
+                previewText: buildPostPreviewText(post.body_text),
+                authorDisplayName: formatAuthorDisplayName(
+                  (post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null
+                ),
+                authorAvatarUrl:
+                  mapAvatarPathToUiValue(
+                    (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
+                  ) ?? DEFAULT_AVATAR_PLACEHOLDER
+              }))
+            );
           }
         }
       }
@@ -343,7 +447,9 @@ export const App = () => {
         const loadedPosts = ((postResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
           ...post,
           previewText: buildPostPreviewText(post.body_text),
-          authorDisplayName: formatAuthorDisplayName((post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null),
+          authorDisplayName: formatAuthorDisplayName(
+            (post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null
+          ),
           authorAvatarUrl:
             mapAvatarPathToUiValue(
               (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
@@ -366,19 +472,9 @@ export const App = () => {
       return;
     }
 
-    void supabaseClient
-      .from("catalog_items")
-      .select("id,title")
-      .limit(20)
-      .then(({ data, error }) => {
-        if (error) {
-          console.error("[app] catalog_items load failed", error);
-          setCatalogItems([]);
-          return;
-        }
-        setCatalogItems((data as OptionRow[] | null) ?? []);
-      });
+    void refreshCatalogItems();
 
+    // Fallback starter list until a specific catalog item is selected.
     void supabaseClient
       .from("catalog_progress_units")
       .select("id,title")
@@ -411,7 +507,7 @@ export const App = () => {
         console.error("[app] post_reactions load failed", reactions.error);
       }
 
-      const commentEvents =
+      const commentEvents = (
         ((comments.data as Array<{ id: string; body_text: string | null; created_at: string; deleted_at?: string | null }> | null) ?? [])
           .filter((entry) => entry.deleted_at == null)
           .map((entry) => ({
@@ -419,7 +515,8 @@ export const App = () => {
             type: "Comment",
             createdAt: entry.created_at,
             text: entry.body_text ?? "New comment"
-          }));
+          }))
+      );
 
       const reactionEvents =
         ((reactions.data as Array<{ post_id: string; user_id: string; emoji: string | null; created_at: string }> | null) ?? []).map(
@@ -434,6 +531,14 @@ export const App = () => {
       setNotifications([...commentEvents, ...reactionEvents].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)));
     });
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !selectedCatalogItemIdForProgress) {
+      return;
+    }
+
+    void loadProgressUnitsForCatalogItem(selectedCatalogItemIdForProgress);
+  }, [currentUser, selectedCatalogItemIdForProgress]);
 
   const onSignedIn = (result: ProviderLoginResult) => {
     if (result.user.preferences?.themePreference) {
@@ -619,7 +724,7 @@ export const App = () => {
             padding: spacingTokens.md,
             borderBottom: `1px solid ${theme.colors.border}`,
             display: "grid",
-            gridTemplateColumns: "1fr auto auto",
+            gridTemplateColumns: "1fr auto auto auto",
             alignItems: "center",
             gap: spacingTokens.sm
           }}
@@ -707,6 +812,25 @@ export const App = () => {
 
           <button
             type="button"
+            aria-label="Search catalog"
+            onClick={() => openCatalogSearch({ mode: "post" })}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              border: `1px solid ${theme.colors.border}`,
+              background: theme.colors.surface,
+              color: theme.colors.textPrimary,
+              fontSize: 18,
+              cursor: "pointer"
+            }}
+            title="Search books / TV shows"
+          >
+            🔎
+          </button>
+
+          <button
+            type="button"
             aria-label="Create post"
             onClick={() => setShowCreatePostSheet(true)}
             style={{
@@ -752,12 +876,29 @@ export const App = () => {
                 theme={theme}
               />
             ) : (
-              <ProfileTabScreen
-                theme={theme}
-                user={currentUser}
-                onEditProfile={() => setShowProfileSettings(true)}
-                onAccountSettings={() => setShowProfileSettings(true)}
-              />
+              <>
+                <ProfileTabScreen
+                  theme={theme}
+                  user={currentUser}
+                  onEditProfile={() => setShowProfileSettings(true)}
+                  onAccountSettings={() => setShowProfileSettings(true)}
+                />
+                <button
+                  type="button"
+                  onClick={() => openCatalogSearch({ mode: "profile" })}
+                  style={{
+                    justifySelf: "start",
+                    borderRadius: radiusTokens.md,
+                    border: `1px solid ${theme.colors.border}`,
+                    padding: "10px 12px",
+                    background: theme.colors.surface,
+                    color: theme.colors.textPrimary,
+                    cursor: "pointer"
+                  }}
+                >
+                  Add book / show to profile
+                </button>
+              </>
             )
           ) : null}
 
@@ -765,13 +906,38 @@ export const App = () => {
             <>
               {selectedGroup ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedGroupId(null)}
-                    style={{ justifySelf: "start", border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: "8px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}
-                  >
-                    ← Back to groups
-                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGroupId(null)}
+                      style={{
+                        justifySelf: "start",
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: radiusTokens.md,
+                        padding: "8px 12px",
+                        background: theme.colors.surface,
+                        color: theme.colors.textPrimary,
+                        cursor: "pointer"
+                      }}
+                    >
+                      ← Back to groups
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openCatalogSearch({ mode: "group", groupId: String(selectedGroup.id) })}
+                      style={{
+                        justifySelf: "start",
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: radiusTokens.md,
+                        padding: "8px 12px",
+                        background: theme.colors.surface,
+                        color: theme.colors.textPrimary,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Add book / show
+                    </button>
+                  </div>
                   <PublicFeedScreen
                     theme={theme}
                     status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
@@ -808,6 +974,10 @@ export const App = () => {
           {mainView === "for-you" ? (
             <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} />
           ) : null}
+
+          {catalogSearchError ? (
+            <small style={{ color: "#b42318" }}>Catalog search/import error: {catalogSearchError}</small>
+          ) : null}
         </main>
 
         <BottomNav
@@ -824,7 +994,13 @@ export const App = () => {
         open={showCreatePostSheet}
         theme={theme}
         groups={groups.map((group) => ({ id: group.id, label: group.name }))}
-        catalogItems={catalogItems.map((entry) => ({ id: entry.id, label: entry.title }))}
+        catalogItems={(() => {
+          const base = catalogItems.map((entry) => ({ id: entry.id, label: entry.title }));
+          if (!pendingPostCatalogSelection) return base;
+          const exists = base.some((entry) => entry.id === pendingPostCatalogSelection.catalogItemId);
+          if (exists) return base;
+          return [{ id: pendingPostCatalogSelection.catalogItemId, label: pendingPostCatalogSelection.catalogItemLabel }, ...base];
+        })()}
         progressUnits={progressUnits.map((entry) => ({ id: entry.id, label: entry.title }))}
         onClose={() => setShowCreatePostSheet(false)}
         onSubmit={async (payload) => {
@@ -835,6 +1011,10 @@ export const App = () => {
           const audience = resolveSingleGroupAudience({
             groupId: payload.group_id
           });
+
+          if (payload.catalog_item_id) {
+            setSelectedCatalogItemIdForProgress(String(payload.catalog_item_id));
+          }
 
           const postInsertPayload: Record<string, unknown> = {
             author_user_id: currentUser.id,
@@ -888,6 +1068,24 @@ export const App = () => {
         }}
       />
 
+      {catalogSearchContext ? (
+        <CatalogSearchSheet
+          open={showCatalogSearchSheet}
+          theme={theme}
+          mode={catalogSearchContext.mode}
+          groupId={catalogSearchContext.mode === "group" ? Number(catalogSearchContext.groupId) : undefined}
+          onClose={closeCatalogSearch}
+          onImported={handleCatalogImported}
+          onError={(message) => {
+            setCatalogSearchError(message);
+            console.error("[app] catalog search/import failed", message);
+          }}
+          // If your backend is namespaced, uncomment these:
+          // searchEndpoint="/api/search/catalog"
+          // importEndpoint="/api/catalog/import"
+        />
+      ) : null}
+
       {showCreateGroupSheet ? (
         <div
           style={{
@@ -929,7 +1127,12 @@ export const App = () => {
                 placeholder="What is this group about?"
                 rows={4}
                 maxLength={240}
-                style={{ borderRadius: radiusTokens.md, border: `1px solid ${theme.colors.border}`, padding: "10px 12px", resize: "vertical" }}
+                style={{
+                  borderRadius: radiusTokens.md,
+                  border: `1px solid ${theme.colors.border}`,
+                  padding: "10px 12px",
+                  resize: "vertical"
+                }}
               />
             </label>
             <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 14 }}>
