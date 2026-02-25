@@ -195,7 +195,7 @@ export const App = () => {
     setNeedsOnboarding(mapped.needsOnboarding);
   };
 
-  const FUNCTIONS_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_URL ?? "";
+  const FUNCTIONS_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.FUNCTIONS_URL ?? "";
 
   const refreshCatalogItems = async () => {
     const { data, error } = await supabaseClient
