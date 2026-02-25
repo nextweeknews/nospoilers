@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, SafeAreaView, StyleSheet, TextInput, View, useColorScheme } from "react-native";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../services/auth/src";
-import { createTheme, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
+import { createTheme, radiusTokens, resolveThemePreference, spacingTokens, type BottomNavItem, type ThemePreference } from "@nospoilers/ui";
 import {
   buildPostPreviewText,
   mapAvatarPathToUiValue,
@@ -91,6 +91,7 @@ export default function App() {
   const [groups, setGroups] = useState<GroupEntity[]>([]);
   const [posts, setPosts] = useState<Array<SupabasePostRow & { previewText: string | null }>>([]);
   const [groupPosts, setGroupPosts] = useState<Array<SupabasePostRow & { previewText: string | null }>>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [feedStatus, setFeedStatus] = useState<GroupLoadStatus>("loading");
   const [feedError, setFeedError] = useState<string>();
   const [authResolved, setAuthResolved] = useState(false);
@@ -108,6 +109,8 @@ export default function App() {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const colorScheme = useColorScheme();
   const theme = createTheme(resolveThemePreference(colorScheme === "dark" ? "dark" : "light", themePreference));
+  const selectedGroup = selectedGroupId ? groups.find((group) => group.id === selectedGroupId) : undefined;
+  const selectedGroupPosts = selectedGroupId ? groupPosts.filter((post) => (post as { group_id?: string | null }).group_id === selectedGroupId) : [];
 
   useEffect(() => {
     const syncSession = async () => {
@@ -181,6 +184,7 @@ export default function App() {
         setGroups(loaded);
         setGroupStatus(loaded.length ? "ready" : "empty");
         setGroupError(undefined);
+        setSelectedGroupId((current) => (current && !loaded.some((group) => group.id === current) ? null : current));
 
         const groupIds = loaded.map((group) => group.id);
         if (!groupIds.length) {
@@ -384,21 +388,42 @@ export default function App() {
                 <ProfileTabScreen theme={theme} user={currentUser} onEditProfile={() => setShowProfileSettings(true)} onAccountSettings={() => setShowProfileSettings(true)} />
               )
             ) : activeTab === "groups" ? (
-              <>
-              <GroupScreen
-                groups={groups.map((group) => ({
-                  id: group.id,
-                  name: group.name,
-                  description: group.description,
-                  coverUrl: mapAvatarPathToUiValue(group.avatar_path)
-                }))}
-                status={groupStatus}
-                errorMessage={groupError}
-                onCreateGroup={() => setShowCreateGroupSheet(true)}
-                theme={theme}
-              />
-              <AppText style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</AppText>
-              </>
+              selectedGroup ? (
+                <>
+                  <Pressable
+                    onPress={() => setSelectedGroupId(null)}
+                    style={{ alignSelf: "flex-start", borderWidth: 1, borderColor: theme.colors.border, borderRadius: radiusTokens.md, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.surface }}
+                  >
+                    <AppText style={{ color: theme.colors.textPrimary, fontWeight: "600" }}>← Back to groups</AppText>
+                  </Pressable>
+                  <PublicFeedScreen
+                    theme={theme}
+                    status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
+                    errorMessage={groupError}
+                    posts={selectedGroupPosts}
+                    title={`${selectedGroup.name} Feed`}
+                    loadingMessage="Loading group posts…"
+                    emptyMessage="No posts in this group yet."
+                  />
+                </>
+              ) : (
+                <>
+                  <GroupScreen
+                    groups={groups.map((group) => ({
+                      id: group.id,
+                      name: group.name,
+                      description: group.description,
+                      coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+                    }))}
+                    status={groupStatus}
+                    errorMessage={groupError}
+                    onCreateGroup={() => setShowCreateGroupSheet(true)}
+                    onSelectGroup={setSelectedGroupId}
+                    theme={theme}
+                  />
+                  <AppText style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</AppText>
+                </>
+              )
             ) : activeTab === "for-you" ? (
               <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} />
             ) : (
