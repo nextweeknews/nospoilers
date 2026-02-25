@@ -851,7 +851,7 @@ export const App = () => {
           const { data: inserted, error } = await supabaseClient
             .from("posts")
             .insert(postInsertPayload)
-            .select("id,body_text,created_at,status,deleted_at,is_public,group_id")
+            .select("id,body_text,created_at,status,deleted_at,group_id")
             .single();
 
           if (error || !inserted) {
