@@ -146,9 +146,21 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [status, setStatus] = useState<LoginStatus>({ message: "Enter your number to start.", tone: "info" });
-  const [emailActionInFlight, setEmailActionInFlight] = useState<"sign-in" | "create-account" | "forgot-password" | "update-password" | null>(null);
+  const [emailActionInFlight, setEmailActionInFlight] = useState<
+    "sign-in" | "create-account" | "forgot-password" | "update-password" | null
+  >(null);
   const [isPasswordResetMode, setIsPasswordResetMode] = useState(false);
+
   const countrySelectRef = useRef<HTMLDivElement | null>(null);
+  const hasEmittedSignedInRef = useRef(false);
+
+  const isAuthCallbackRoute = window.location.pathname === "/auth/callback";
+
+  const emitSignedInOnce = (result: ProviderLoginResult) => {
+    if (hasEmittedSignedInRef.current) return;
+    hasEmittedSignedInRef.current = true;
+    onSignedIn(result);
+  };
 
   const selectedCountryOption = COUNTRY_OPTIONS.find((option) => option.code === selectedCountry) ?? COUNTRY_OPTIONS[0];
   const sortedCountryOptions = useMemo(
@@ -193,9 +205,18 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
   }, []);
 
-  // Listen for auth events.
+  // Listen for auth events (but never on the OAuth callback route).
   useEffect(() => {
-    const { data: authListener } = onAuthStateChange(async (event, session) => {
+    if (isAuthCallbackRoute) {
+      return;
+    }
+
+    const { data: authListener } = onAuthStateChange((event, session) => {
+      // Extra runtime guard in case route changes while listener is active.
+      if (window.location.pathname === "/auth/callback") {
+        return;
+      }
+
       if (event === "PASSWORD_RECOVERY") {
         setAuthView("email");
         setIsPasswordResetMode(true);
@@ -204,23 +225,30 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       }
 
       if (event === "SIGNED_IN" && session?.user) {
-        onSignedIn(mapResult(session.user, session));
+        emitSignedInOnce(mapResult(session.user, session));
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [onSignedIn]);
+  }, [isAuthCallbackRoute]);
 
-  // Catch already-restored sessions after page reload.
+  // Catch already-restored sessions after page reload (but never on callback route).
   useEffect(() => {
+    if (isAuthCallbackRoute) {
+      return;
+    }
+
     let active = true;
 
     void (async () => {
+      if (window.location.pathname === "/auth/callback") return;
+
       const { data, error } = await getSession();
 
       if (!active) return;
+      if (window.location.pathname === "/auth/callback") return;
 
       if (error) {
         console.error("getSession after redirect failed:", error);
@@ -228,14 +256,14 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       }
 
       if (data.session?.user) {
-        onSignedIn(mapResult(data.session.user, data.session));
+        emitSignedInOnce(mapResult(data.session.user, data.session));
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [onSignedIn]);
+  }, [isAuthCallbackRoute]);
 
   const phoneDigits = getPhoneDigits(formattedPhone);
   const fullPhoneNumber = `${selectedCountryOption.dialCode}${phoneDigits}`;
@@ -281,7 +309,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       return;
     }
 
-    onSignedIn(mapResult(data.user, data.session));
+    emitSignedInOnce(mapResult(data.user, data.session));
   };
 
   const handleGoogleOAuth = async () => {
@@ -343,7 +371,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       return;
     }
 
-    onSignedIn(mapResult(data.session.user, data.session));
+    emitSignedInOnce(mapResult(data.session.user, data.session));
     setEmailActionInFlight(null);
   };
 
@@ -356,7 +384,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       return;
     }
 
-    onSignedIn(mapResult(data.user, data.session));
+    emitSignedInOnce(mapResult(data.user, data.session));
     setEmailActionInFlight(null);
   };
 
@@ -370,7 +398,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
     }
 
     if (data.user && data.session) {
-      onSignedIn(mapResult(data.user, data.session));
+      emitSignedInOnce(mapResult(data.user, data.session));
       setEmailActionInFlight(null);
       return;
     }
@@ -479,7 +507,11 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                 </div>
               </label>
               <button type="submit" style={smsButton(theme)} disabled={challengeStarted && !canResendOtp}>
-                {challengeStarted ? (canResendOtp ? "Resend SMS code" : `Resend in ${resendCountdownSeconds}s`) : "Continue with SMS"}
+                {challengeStarted
+                  ? canResendOtp
+                    ? "Resend SMS code"
+                    : `Resend in ${resendCountdownSeconds}s`
+                  : "Continue with SMS"}
               </button>
             </form>
 
@@ -551,7 +583,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                   placeholder="Password"
                   style={inputStyle(theme)}
                 />
-                <button type="button" style={linkButton(theme)} onClick={handleForgotPassword} disabled={emailActionInFlight !== null}>
+                <button
+                  type="button"
+                  style={linkButton(theme)}
+                  onClick={handleForgotPassword}
+                  disabled={emailActionInFlight !== null}
+                >
                   Forgot password?
                 </button>
 
@@ -565,7 +602,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
-                  <button type="button" style={emailButton(theme)} onClick={handleCreateAccount} disabled={emailActionInFlight !== null}>
+                  <button
+                    type="button"
+                    style={emailButton(theme)}
+                    onClick={handleCreateAccount}
+                    disabled={emailActionInFlight !== null}
+                  >
                     Create account
                   </button>
                   <small style={{ color: theme.colors.textSecondary, textAlign: "center" }}>
@@ -592,10 +634,22 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
               style={googleButton(theme)}
             >
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-                <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z" />
-                <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.5-5.2l-6.2-5.2C29.3 35.1 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z" />
-                <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.3 5.4-6 6.9l.1-.1 6.2 5.2C35.2 40.3 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
+                <path
+                  fill="#FFC107"
+                  d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12S17.4 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"
+                />
+                <path
+                  fill="#FF3D00"
+                  d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34.1 6.1 29.3 4 24 4c-7.7 0-14.3 4.3-17.7 10.7z"
+                />
+                <path
+                  fill="#4CAF50"
+                  d="M24 44c5.2 0 10-2 13.5-5.2l-6.2-5.2C29.3 35.1 26.8 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.6 5.1C9.5 39.6 16.2 44 24 44z"
+                />
+                <path
+                  fill="#1976D2"
+                  d="M43.6 20.5H42V20H24v8h11.3c-1.1 3.1-3.3 5.4-6 6.9l.1-.1 6.2 5.2C35.2 40.3 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"
+                />
               </svg>
               <span>Continue with Google</span>
             </button>
