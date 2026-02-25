@@ -25,6 +25,7 @@ const formatRelativeTimestamp = (createdAt: string, nowMs: number = Date.now()):
   }
 
   const elapsedMs = Math.max(0, nowMs - timestampMs);
+  const second = 1000;
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
@@ -32,7 +33,7 @@ const formatRelativeTimestamp = (createdAt: string, nowMs: number = Date.now()):
   const month = 30 * day;
   const year = 365 * day;
 
-  if (elapsedMs < minute) return "1m";
+  if (elapsedMs < minute) return `${Math.max(1, Math.floor(elapsedMs / second))}s`;
   if (elapsedMs < hour) return `${Math.floor(elapsedMs / minute)}m`;
   if (elapsedMs < day) return `${Math.floor(elapsedMs / hour)}h`;
   if (elapsedMs < week) return `${Math.floor(elapsedMs / day)}d`;
