@@ -21,6 +21,7 @@ export type CatalogSearchResult = {
   progress_unit_type?: "chapter" | "episode" | "page" | "percent" | null;
   progress_summary?: Record<string, unknown> | null;
   local_catalog?: { exists: boolean; catalog_item_id: number | null };
+  metadata?: Record<string, unknown>;
 };
 
 export type CatalogImportRequest = {
@@ -56,6 +57,26 @@ export type CatalogImportResponse = {
   };
 };
 
+/**
+ * Current edge function ("search-catalog") likely returns a simpler shape:
+ * {
+ *   query, count,
+ *   results: [{ provider, source_id, item_type, title, canonical_title, release_year, cover_image_url, source_url, subtitle, metadata }]
+ * }
+ */
+type EdgeFunctionSearchResult = {
+  provider?: string;
+  source_id?: string;
+  item_type?: string;
+  title?: string;
+  canonical_title?: string | null;
+  release_year?: number | null;
+  cover_image_url?: string | null;
+  source_url?: string | null;
+  subtitle?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
 type SearchResponse = {
   results: CatalogSearchResult[];
   pagination?: { next_cursor?: string | null; has_more?: boolean };
@@ -64,23 +85,43 @@ type SearchResponse = {
 
 type SearchMode = "profile" | "group" | "post";
 type TypeFilter = "all" | CatalogItemType;
+type SelectionBehavior = "select_only" | "import";
 
 type Props = {
   open: boolean;
   theme: Theme;
-  mode: SearchMode;
+  mode?: SearchMode;
   groupId?: number;
   onClose: () => void;
-  onImported: (result: CatalogImportResponse, selected: CatalogSearchResult) => void;
+
+  /**
+   * For immediate frontend integration before /catalog/import exists.
+   * In "select_only" mode, the primary action calls onSelected and does not POST /catalog/import.
+   */
+  selectionBehavior?: SelectionBehavior;
+  onSelected?: (selected: CatalogSearchResult) => void;
+
+  /**
+   * For full import flow (future/current if implemented).
+   * Required only if selectionBehavior === "import".
+   */
+  onImported?: (result: CatalogImportResponse, selected: CatalogSearchResult) => void;
+
   onError?: (message: string) => void;
 
-  // Optional endpoint overrides
-  searchEndpoint?: string; // default: /search/catalog
-  importEndpoint?: string; // default: /catalog/import
+  // Endpoint overrides
+  searchEndpoint?: string; // e.g. https://<project>.functions.supabase.co/search-catalog
+  importEndpoint?: string; // e.g. https://<project>.functions.supabase.co/catalog-import
 
-  // Optional auth/session hooks if your backend needs credentials or custom fetch
+  // Optional fetch override + request headers
   fetchImpl?: typeof fetch;
   defaultTypeFilter?: TypeFilter;
+  defaultHeaders?: HeadersInit;
+  searchHeaders?: HeadersInit;
+  importHeaders?: HeadersInit;
+
+  // Convenience if you want to inject anon key directly
+  apiKey?: string;
 };
 
 type LoadStatus = "idle" | "loading" | "ready" | "error";
@@ -126,38 +167,174 @@ const getAudienceText = (mode: SearchMode) => {
   return "Select for post";
 };
 
-const getImportButtonText = (mode: SearchMode, importing: boolean) => {
+const getPrimaryActionText = (mode: SearchMode, importing: boolean, selectionBehavior: SelectionBehavior) => {
+  if (selectionBehavior === "select_only") return "Select item";
   if (importing) return "Adding…";
   if (mode === "post") return "Select item";
   if (mode === "group") return "Add to group";
   return "Add to profile";
 };
 
-const parseSearchResponse = async (response: Response): Promise<SearchResponse> => {
-  const json = (await response.json()) as unknown;
-  if (!response.ok) {
-    const message =
-      typeof json === "object" && json && "message" in json && typeof (json as { message?: unknown }).message === "string"
-        ? (json as { message: string }).message
-        : `Search failed (${response.status})`;
-    throw new Error(message);
+const isCatalogItemType = (value: unknown): value is CatalogItemType => value === "book" || value === "tv_show";
+
+const isCatalogSource = (value: unknown): value is CatalogSource =>
+  value === "tmdb" || value === "tvmaze" || value === "openlibrary" || value === "google_books" || value === "manual";
+
+const normalizeSource = (value: unknown): CatalogSource => (isCatalogSource(value) ? value : "manual");
+
+const deriveProgressDefaults = (itemType: CatalogItemType) => {
+  if (itemType === "tv_show") {
+    return { has_progress_units: true, progress_unit_type: "episode" as const };
   }
-  const parsed = json as Partial<SearchResponse>;
+  return { has_progress_units: true, progress_unit_type: "chapter" as const };
+};
+
+const toUiResultFromEdge = (raw: EdgeFunctionSearchResult): CatalogSearchResult | null => {
+  const itemType = isCatalogItemType(raw.item_type) ? raw.item_type : null;
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const sourceId = typeof raw.source_id === "string" ? raw.source_id : "";
+  const provider = normalizeSource(raw.provider);
+
+  if (!itemType || !title || !sourceId) {
+    return null;
+  }
+
+  const progressDefaults = deriveProgressDefaults(itemType);
+
   return {
-    results: Array.isArray(parsed.results) ? parsed.results : [],
+    result_id: `${provider}:${sourceId}`,
+    item_type: itemType,
+    title,
+    canonical_title: typeof raw.canonical_title === "string" ? raw.canonical_title : raw.canonical_title ?? null,
+    release_year: typeof raw.release_year === "number" ? raw.release_year : null,
+    subtitle: typeof raw.subtitle === "string" ? raw.subtitle : null,
+    cover_image_url: typeof raw.cover_image_url === "string" ? raw.cover_image_url : null,
+    metadata_source: provider,
+    source_id: sourceId,
+    source_url: typeof raw.source_url === "string" ? raw.source_url : null,
+    aliases: [],
+    has_progress_units: progressDefaults.has_progress_units,
+    progress_unit_type: progressDefaults.progress_unit_type,
+    progress_summary: null,
+    local_catalog: { exists: false, catalog_item_id: null },
+    metadata: raw.metadata && typeof raw.metadata === "object" ? raw.metadata : {}
+  };
+};
+
+const toUiResultFromRich = (raw: unknown): CatalogSearchResult | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Partial<CatalogSearchResult>;
+
+  const itemType = isCatalogItemType(obj.item_type) ? obj.item_type : null;
+  const title = typeof obj.title === "string" ? obj.title.trim() : "";
+  const sourceId = typeof obj.source_id === "string" ? obj.source_id : "";
+  const metadataSource = normalizeSource(obj.metadata_source);
+
+  if (!itemType || !title || !sourceId) return null;
+
+  const resultId =
+    typeof obj.result_id === "string" && obj.result_id.trim()
+      ? obj.result_id
+      : `${metadataSource}:${sourceId}`;
+
+  const defaults = deriveProgressDefaults(itemType);
+
+  return {
+    result_id: resultId,
+    item_type: itemType,
+    title,
+    canonical_title: typeof obj.canonical_title === "string" ? obj.canonical_title : obj.canonical_title ?? null,
+    release_year: typeof obj.release_year === "number" ? obj.release_year : null,
+    subtitle: typeof obj.subtitle === "string" ? obj.subtitle : null,
+    cover_image_url: typeof obj.cover_image_url === "string" ? obj.cover_image_url : null,
+    metadata_source: metadataSource,
+    source_id: sourceId,
+    source_url: typeof obj.source_url === "string" ? obj.source_url : null,
+    aliases: Array.isArray(obj.aliases) ? obj.aliases.filter((v): v is string => typeof v === "string") : [],
+    has_progress_units:
+      typeof obj.has_progress_units === "boolean" ? obj.has_progress_units : defaults.has_progress_units,
+    progress_unit_type: obj.progress_unit_type ?? defaults.progress_unit_type,
+    progress_summary:
+      obj.progress_summary && typeof obj.progress_summary === "object"
+        ? (obj.progress_summary as Record<string, unknown>)
+        : null,
+    local_catalog:
+      obj.local_catalog && typeof obj.local_catalog === "object"
+        ? {
+            exists: Boolean((obj.local_catalog as { exists?: unknown }).exists),
+            catalog_item_id:
+              typeof (obj.local_catalog as { catalog_item_id?: unknown }).catalog_item_id === "number"
+                ? ((obj.local_catalog as { catalog_item_id: number }).catalog_item_id ?? null)
+                : null
+          }
+        : { exists: false, catalog_item_id: null },
+    metadata: obj.metadata && typeof obj.metadata === "object" ? (obj.metadata as Record<string, unknown>) : {}
+  };
+};
+
+const parseErrorMessageFromJson = (json: unknown, fallback: string): string => {
+  if (typeof json !== "object" || !json) return fallback;
+
+  const maybeMessage = (json as { message?: unknown }).message;
+  if (typeof maybeMessage === "string" && maybeMessage.trim()) return maybeMessage;
+
+  const maybeError = (json as { error?: unknown }).error;
+  if (typeof maybeError === "string" && maybeError.trim()) return maybeError;
+
+  return fallback;
+};
+
+const parseSearchResponse = async (response: Response): Promise<SearchResponse> => {
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    if (!response.ok) {
+      throw new Error(`Search failed (${response.status})`);
+    }
+    json = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(parseErrorMessageFromJson(json, `Search failed (${response.status})`));
+  }
+
+  const parsed = (json ?? {}) as {
+    results?: unknown;
+    pagination?: SearchResponse["pagination"];
+    providers?: SearchResponse["providers"];
+  };
+
+  const rawResults = Array.isArray(parsed.results) ? parsed.results : [];
+  const normalizedResults: CatalogSearchResult[] = rawResults
+    .map((item) => {
+      // Try rich format first (already normalized backend contract)
+      const rich = toUiResultFromRich(item);
+      if (rich) return rich;
+
+      // Then try current edge-function format
+      return toUiResultFromEdge(item as EdgeFunctionSearchResult);
+    })
+    .filter((item): item is CatalogSearchResult => Boolean(item));
+
+  return {
+    results: normalizedResults,
     pagination: parsed.pagination,
     providers: parsed.providers
   };
 };
 
 const parseImportResponse = async (response: Response): Promise<CatalogImportResponse> => {
-  const json = (await response.json()) as unknown;
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    if (!response.ok) throw new Error(`Import failed (${response.status})`);
+    throw new Error("Invalid import response.");
+  }
+
   if (!response.ok) {
-    const message =
-      typeof json === "object" && json && "message" in json && typeof (json as { message?: unknown }).message === "string"
-        ? (json as { message: string }).message
-        : `Import failed (${response.status})`;
-    throw new Error(message);
+    throw new Error(parseErrorMessageFromJson(json, `Import failed (${response.status})`));
   }
   return json as CatalogImportResponse;
 };
@@ -186,25 +363,43 @@ const saveRecentSearch = (query: string) => {
   }
 };
 
+const mergeHeaders = (...headerSets: Array<HeadersInit | undefined>): Headers => {
+  const headers = new Headers();
+  for (const set of headerSets) {
+    if (!set) continue;
+    new Headers(set).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
+  return headers;
+};
+
 export const CatalogSearchSheet = ({
   open,
   theme,
-  mode,
+  mode = "post",
   groupId,
   onClose,
+  selectionBehavior = "select_only",
+  onSelected,
   onImported,
   onError,
   searchEndpoint = DEFAULT_SEARCH_ENDPOINT,
   importEndpoint = DEFAULT_IMPORT_ENDPOINT,
   fetchImpl = fetch,
-  defaultTypeFilter = "all"
+  defaultTypeFilter = "all",
+  defaultHeaders,
+  searchHeaders,
+  importHeaders,
+  apiKey
 }: Props) => {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(defaultTypeFilter);
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [results, setResults] = useState<CatalogSearchResult[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
-  const [errorMessage, setErrorMessage] = useState<string>();
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string>();
+  const [importErrorMessage, setImportErrorMessage] = useState<string>();
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -219,11 +414,14 @@ export const CatalogSearchSheet = ({
 
   useEffect(() => {
     if (!open) return;
+
+    setTypeFilter(defaultTypeFilter);
     setRecentSearches(loadRecentSearches());
+
     // autofocus after render
     const timer = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => window.clearTimeout(timer);
-  }, [open]);
+  }, [open, defaultTypeFilter]);
 
   useEffect(() => {
     if (!open) {
@@ -231,11 +429,13 @@ export const CatalogSearchSheet = ({
       setStatus("idle");
       setResults([]);
       setSelectedId(undefined);
-      setErrorMessage(undefined);
+      setSearchErrorMessage(undefined);
+      setImportErrorMessage(undefined);
       setNextCursor(null);
       setHasMore(false);
       setImportingResultId(undefined);
       setProviderMeta(undefined);
+
       if (abortRef.current) {
         abortRef.current.abort();
         abortRef.current = null;
@@ -248,19 +448,87 @@ export const CatalogSearchSheet = ({
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key === "Enter" && event.metaKey === false && event.ctrlKey === false && event.altKey === false) {
+        const target = event.target as HTMLElement | null;
+        if (target && target.tagName.toLowerCase() === "input") {
+          if (selectionBehavior === "select_only" && selectedResultRef.current) {
+            event.preventDefault();
+            onSelected?.(selectedResultRef.current);
+            return;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose, onSelected, selectionBehavior]);
+
   const selectedResult = useMemo(
     () => results.find((item) => item.result_id === selectedId),
     [results, selectedId]
   );
 
+  const selectedResultRef = useRef<CatalogSearchResult | undefined>(undefined);
+  useEffect(() => {
+    selectedResultRef.current = selectedResult;
+  }, [selectedResult]);
+
   const canSearch = query.trim().length >= MIN_QUERY_LENGTH;
+
+  const getSearchRequestHeaders = (): Headers => {
+    const headers = mergeHeaders(
+      { Accept: "application/json" },
+      defaultHeaders,
+      searchHeaders,
+      apiKey ? { apikey: apiKey } : undefined
+    );
+
+    // Helpful fallback if apiKey prop wasn't passed but env exists in Vite app
+    if (!headers.has("apikey")) {
+      const envApiKey = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_ANON_KEY;
+      if (envApiKey) headers.set("apikey", envApiKey);
+    }
+
+    return headers;
+  };
+
+  const getImportRequestHeaders = (): Headers => {
+    const headers = mergeHeaders(
+      {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      },
+      defaultHeaders,
+      importHeaders,
+      apiKey ? { apikey: apiKey } : undefined
+    );
+
+    if (!headers.has("apikey")) {
+      const envApiKey = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_ANON_KEY;
+      if (envApiKey) headers.set("apikey", envApiKey);
+    }
+
+    return headers;
+  };
 
   const runSearch = async (opts?: { cursor?: string; append?: boolean }) => {
     const trimmed = query.trim();
     if (trimmed.length < MIN_QUERY_LENGTH) {
       setStatus("idle");
       setResults([]);
-      setErrorMessage(undefined);
+      setSearchErrorMessage(undefined);
+      setImportErrorMessage(undefined);
       setNextCursor(null);
       setHasMore(false);
       setProviderMeta(undefined);
@@ -276,10 +544,12 @@ export const CatalogSearchSheet = ({
 
     const requestSeq = ++requestSeqRef.current;
     const controller = new AbortController();
+
     if (!append) {
       abortRef.current = controller;
       setStatus("loading");
-      setErrorMessage(undefined);
+      setSearchErrorMessage(undefined);
+      setImportErrorMessage(undefined);
     } else {
       setIsLoadingMore(true);
     }
@@ -293,13 +563,13 @@ export const CatalogSearchSheet = ({
     try {
       const response = await fetchImpl(`${searchEndpoint}?${params.toString()}`, {
         method: "GET",
-        headers: { Accept: "application/json" },
+        headers: getSearchRequestHeaders(),
         signal: controller.signal
       });
 
       const parsed = await parseSearchResponse(response);
 
-      // Ignore stale responses
+      // Ignore stale base-search responses
       if (!append && requestSeq !== requestSeqRef.current) return;
 
       setProviderMeta(parsed.providers);
@@ -320,7 +590,10 @@ export const CatalogSearchSheet = ({
         });
       } else {
         setResults(parsed.results);
-        setSelectedId(parsed.results[0]?.result_id);
+        setSelectedId((current) => {
+          if (current && parsed.results.some((r) => r.result_id === current)) return current;
+          return parsed.results[0]?.result_id;
+        });
       }
 
       setStatus("ready");
@@ -331,7 +604,7 @@ export const CatalogSearchSheet = ({
         return;
       }
       const message = error instanceof Error ? error.message : "Search failed.";
-      setErrorMessage(message);
+      setSearchErrorMessage(message);
       setStatus("error");
       onError?.(message);
     } finally {
@@ -359,16 +632,33 @@ export const CatalogSearchSheet = ({
         debounceRef.current = null;
       }
     };
+    // Intentionally excludes runSearch (function identity changes each render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, typeFilter, open]);
 
   const onPickRecentSearch = (value: string) => {
     setQuery(value);
+    setSearchErrorMessage(undefined);
+    setImportErrorMessage(undefined);
   };
 
-  const handleImportSelected = async () => {
+  const handlePrimaryAction = async () => {
     if (!selectedResult) return;
+
+    if (selectionBehavior === "select_only") {
+      setImportErrorMessage(undefined);
+      onSelected?.(selectedResult);
+      return;
+    }
+
     if (importingResultId) return;
+
+    if (!onImported) {
+      const message = "Catalog import handler is not configured.";
+      setImportErrorMessage(message);
+      onError?.(message);
+      return;
+    }
 
     const payload: CatalogImportRequest = {
       item_type: selectedResult.item_type,
@@ -391,15 +681,12 @@ export const CatalogSearchSheet = ({
     };
 
     setImportingResultId(selectedResult.result_id);
-    setErrorMessage(undefined);
+    setImportErrorMessage(undefined);
 
     try {
       const response = await fetchImpl(importEndpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
+        headers: getImportRequestHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -407,7 +694,7 @@ export const CatalogSearchSheet = ({
       onImported(imported, selectedResult);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to import catalog item.";
-      setErrorMessage(message);
+      setImportErrorMessage(message);
       onError?.(message);
     } finally {
       setImportingResultId(undefined);
@@ -421,9 +708,17 @@ export const CatalogSearchSheet = ({
 
   if (!open) return null;
 
+  const effectiveDetailError = importErrorMessage;
+
   return (
-    <div style={overlayStyle()}>
-      <div style={sheetStyle(theme)}>
+    <div
+      style={overlayStyle()}
+      onClick={onClose}
+      aria-modal="true"
+      role="dialog"
+      aria-label="Catalog search"
+    >
+      <div style={sheetStyle(theme)} onClick={(event) => event.stopPropagation()}>
         <header style={headerStyle(theme)}>
           <div>
             <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Search books & TV shows</h3>
@@ -434,12 +729,15 @@ export const CatalogSearchSheet = ({
           </button>
         </header>
 
-        <div style={{ display: "grid", gap: spacingTokens.sm }}>
+        <div style={{ display: "grid", gap: spacingTokens.sm, padding: spacingTokens.md, borderBottom: `1px solid ${theme.colors.border}` }}>
           <input
             ref={inputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search titles, aliases, authors…"
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSearchErrorMessage(undefined);
+            }}
+            placeholder="Search books and TV shows…"
             style={inputStyle(theme)}
             aria-label="Search catalog"
           />
@@ -449,7 +747,10 @@ export const CatalogSearchSheet = ({
               <button
                 key={filter}
                 type="button"
-                onClick={() => setTypeFilter(filter)}
+                onClick={() => {
+                  setTypeFilter(filter);
+                  setSearchErrorMessage(undefined);
+                }}
                 style={chipButtonStyle(theme, typeFilter === filter)}
               >
                 {filter === "all" ? "All" : TYPE_LABEL[filter]}
@@ -477,20 +778,18 @@ export const CatalogSearchSheet = ({
               <EmptyState
                 theme={theme}
                 title={`Type at least ${MIN_QUERY_LENGTH} characters`}
-                subtitle="Search across books and TV shows, then add to your profile, group, or post."
+                subtitle="Search across books and TV shows, then select an item."
               />
             ) : null}
 
-            {status === "loading" ? (
-              <LoadingState theme={theme} label="Searching…" />
-            ) : null}
+            {status === "loading" ? <LoadingState theme={theme} label="Searching…" /> : null}
 
             {status === "error" ? (
-              <EmptyState theme={theme} title="Search failed" subtitle={errorMessage ?? "Please try again."} />
+              <EmptyState theme={theme} title="Search failed" subtitle={searchErrorMessage ?? "Please try again."} />
             ) : null}
 
             {status === "ready" && results.length === 0 ? (
-              <EmptyState theme={theme} title="No results" subtitle="Try a different title, author, or alternate name." />
+              <EmptyState theme={theme} title="No results" subtitle="Try a different title, author, or show name." />
             ) : null}
 
             {status === "ready" && results.length > 0 ? (
@@ -500,11 +799,15 @@ export const CatalogSearchSheet = ({
                     const isSelected = selectedId === item.result_id;
                     const subtitle = formatSubtitle(item);
                     const progressChip = progressLabel(item.progress_unit_type);
+
                     return (
                       <li key={item.result_id}>
                         <button
                           type="button"
-                          onClick={() => setSelectedId(item.result_id)}
+                          onClick={() => {
+                            setSelectedId(item.result_id);
+                            setImportErrorMessage(undefined);
+                          }}
                           style={resultRowButtonStyle(theme, isSelected)}
                         >
                           <div style={coverWrapperStyle(theme)}>
@@ -526,18 +829,14 @@ export const CatalogSearchSheet = ({
                           <div style={{ display: "grid", gap: 4, textAlign: "left" }}>
                             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                               <strong style={{ color: theme.colors.textPrimary, fontSize: 14 }}>{item.title}</strong>
-                              {item.local_catalog?.exists ? (
-                                <span style={tinyPillStyle(theme, true)}>Added</span>
-                              ) : null}
+                              {item.local_catalog?.exists ? <span style={tinyPillStyle(theme, true)}>Added</span> : null}
                             </div>
 
-                            {subtitle ? (
-                              <div style={{ color: theme.colors.textSecondary, fontSize: 12 }}>{subtitle}</div>
-                            ) : null}
+                            {subtitle ? <div style={{ color: theme.colors.textSecondary, fontSize: 12 }}>{subtitle}</div> : null}
 
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <span style={tinyPillStyle(theme)}>{TYPE_LABEL[item.item_type]}</span>
-                              <span style={tinyPillStyle(theme)}>{SOURCE_LABEL[item.metadata_source]}</span>
+                              <span style={tinyPillStyle(theme)}>{SOURCE_LABEL[item.metadata_source] ?? item.metadata_source}</span>
                               {progressChip ? <span style={tinyPillStyle(theme)}>{progressChip}</span> : null}
                             </div>
                           </div>
@@ -569,12 +868,13 @@ export const CatalogSearchSheet = ({
                 theme={theme}
                 item={selectedResult}
                 mode={mode}
+                selectionBehavior={selectionBehavior}
                 isImporting={importingResultId === selectedResult.result_id}
-                onImport={() => void handleImportSelected()}
-                errorMessage={errorMessage}
+                onPrimaryAction={() => void handlePrimaryAction()}
+                errorMessage={effectiveDetailError}
               />
             ) : (
-              <EmptyState theme={theme} title="Select a result" subtitle="Choose an item to preview details and add it." />
+              <EmptyState theme={theme} title="Select a result" subtitle="Choose an item to preview details and continue." />
             )}
 
             {providerMeta ? (
@@ -597,15 +897,17 @@ const SelectedResultPanel = ({
   theme,
   item,
   mode,
+  selectionBehavior,
   isImporting,
-  onImport,
+  onPrimaryAction,
   errorMessage
 }: {
   theme: Theme;
   item: CatalogSearchResult;
   mode: SearchMode;
+  selectionBehavior: SelectionBehavior;
   isImporting: boolean;
-  onImport: () => void;
+  onPrimaryAction: () => void;
   errorMessage?: string;
 }) => {
   const subtitle = formatSubtitle(item);
@@ -628,7 +930,7 @@ const SelectedResultPanel = ({
           {subtitle ? <div style={{ color: theme.colors.textSecondary, fontSize: 13 }}>{subtitle}</div> : null}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <span style={tinyPillStyle(theme)}>{TYPE_LABEL[item.item_type]}</span>
-            <span style={tinyPillStyle(theme)}>{SOURCE_LABEL[item.metadata_source]}</span>
+            <span style={tinyPillStyle(theme)}>{SOURCE_LABEL[item.metadata_source] ?? item.metadata_source}</span>
             {item.local_catalog?.exists ? <span style={tinyPillStyle(theme, true)}>Already in catalog</span> : null}
           </div>
         </div>
@@ -689,8 +991,13 @@ const SelectedResultPanel = ({
 
       {errorMessage ? <p style={{ margin: 0, color: "#b42318", fontSize: 13 }}>{errorMessage}</p> : null}
 
-      <button type="button" onClick={onImport} disabled={isImporting} style={primaryButtonStyle(theme, isImporting)}>
-        {getImportButtonText(mode, isImporting)}
+      <button
+        type="button"
+        onClick={onPrimaryAction}
+        disabled={selectionBehavior === "import" ? isImporting : false}
+        style={primaryButtonStyle(theme, selectionBehavior === "import" ? isImporting : false)}
+      >
+        {getPrimaryActionText(mode, isImporting, selectionBehavior)}
       </button>
     </div>
   );
