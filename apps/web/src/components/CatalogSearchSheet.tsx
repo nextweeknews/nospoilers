@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { radiusTokens, spacingTokens, type Theme } from "@nospoilers/ui";
+import { supabaseClient } from "../services/supabaseClient";
 
 type CatalogItemType = "book" | "tv_show";
 type CatalogSource = "tmdb" | "tvmaze" | "openlibrary" | "google_books" | "manual";
@@ -529,7 +530,7 @@ export const CatalogSearchSheet = ({
     if (!headers.has("authorization")) {
       try {
         // Uses the user's current session token via your existing supabase client
-        const { data } = await (await import("../services/supabaseClient")).supabaseClient.auth.getSession();
+        const { data } = await supabaseClient.auth.getSession();
         const token = data.session?.access_token;
         if (token) headers.set("authorization", `Bearer ${token}`);
       } catch {
