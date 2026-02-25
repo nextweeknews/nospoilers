@@ -1,9 +1,11 @@
-import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { spacingTokens, type AppTheme } from "@nospoilers/ui";
 
 type FeedPost = {
   id: string;
   previewText: string | null;
   created_at: string;
+  authorDisplayName: string;
+  authorAvatarUrl?: string;
 };
 
 type PublicFeedScreenProps = {
@@ -14,6 +16,29 @@ type PublicFeedScreenProps = {
   title?: string;
   loadingMessage?: string;
   emptyMessage?: string;
+};
+
+const formatRelativeTimestamp = (createdAt: string, nowMs: number = Date.now()): string => {
+  const timestampMs = new Date(createdAt).getTime();
+  if (!Number.isFinite(timestampMs)) {
+    return "now";
+  }
+
+  const elapsedMs = Math.max(0, nowMs - timestampMs);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
+  const year = 365 * day;
+
+  if (elapsedMs < minute) return "1m";
+  if (elapsedMs < hour) return `${Math.floor(elapsedMs / minute)}m`;
+  if (elapsedMs < day) return `${Math.floor(elapsedMs / hour)}h`;
+  if (elapsedMs < week) return `${Math.floor(elapsedMs / day)}d`;
+  if (elapsedMs < month) return `${Math.floor(elapsedMs / week)}w`;
+  if (elapsedMs < year) return `${Math.floor(elapsedMs / month)}mo`;
+  return `${Math.floor(elapsedMs / year)}y`;
 };
 
 export const PublicFeedScreen = ({
@@ -31,9 +56,29 @@ export const PublicFeedScreen = ({
     {status === "error" ? <p style={{ margin: 0, color: "#d11" }}>{errorMessage ?? "Unable to load posts."}</p> : null}
     {status === "empty" ? <p style={{ margin: 0, color: theme.colors.textSecondary }}>{emptyMessage}</p> : null}
     {posts.map((post) => (
-      <article key={post.id} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.md }}>
-        <p style={{ margin: 0, color: theme.colors.textPrimary }}>{post.previewText ?? "(No text)"}</p>
-        <small style={{ color: theme.colors.textSecondary }}>{new Date(post.created_at).toLocaleString()}</small>
+      <article
+        key={post.id}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "44px minmax(0, 1fr)",
+          columnGap: spacingTokens.sm,
+          padding: `${spacingTokens.sm} 0`,
+          borderBottom: `1px solid ${theme.colors.border}`
+        }}
+      >
+        <img
+          src={post.authorAvatarUrl}
+          alt={`${post.authorDisplayName} avatar`}
+          style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }}
+          loading="lazy"
+        />
+        <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
+            <strong style={{ color: theme.colors.textPrimary }}>{post.authorDisplayName}</strong>
+            <small style={{ color: theme.colors.textSecondary }}>{formatRelativeTimestamp(post.created_at)}</small>
+          </div>
+          <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap" }}>{post.previewText ?? "(No text)"}</p>
+        </div>
       </article>
     ))}
   </section>

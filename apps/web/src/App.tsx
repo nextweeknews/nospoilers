@@ -42,6 +42,8 @@ type GroupEntity = SupabaseGroupRow;
 
 type PostEntity = SupabasePostRow & {
   previewText: string | null;
+  authorDisplayName: string;
+  authorAvatarUrl?: string;
 };
 
 type OptionRow = { id: string; title: string };
@@ -57,6 +59,20 @@ const getSystemMode = (): ThemeMode => {
 const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`
 )}`;
+
+const formatAuthorDisplayName = (author: { display_name?: string | null; username?: string | null } | null): string => {
+  const displayName = author?.display_name?.trim();
+  if (displayName) {
+    return displayName;
+  }
+
+  const username = author?.username?.trim();
+  if (username) {
+    return username;
+  }
+
+  return "Unknown";
+};
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -287,7 +303,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,group_id")
+            .select("id,body_text,created_at,status,deleted_at,is_public,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -299,7 +315,12 @@ export const App = () => {
           } else {
             setGroupPosts(((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
               ...post,
-              previewText: buildPostPreviewText(post.body_text)
+              previewText: buildPostPreviewText(post.body_text),
+              authorDisplayName: formatAuthorDisplayName((post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null),
+              authorAvatarUrl:
+                mapAvatarPathToUiValue(
+                  (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
+                ) ?? DEFAULT_AVATAR_PLACEHOLDER
             })));
           }
         }
@@ -307,7 +328,7 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,group_id")
+        .select("id,body_text,created_at,status,deleted_at,is_public,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
         .eq("status", "published")
         .is("deleted_at", null)
         // Optional: keep only non-group posts in the "for-you" feed.
@@ -322,7 +343,12 @@ export const App = () => {
       } else {
         const loadedPosts = ((postResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
           ...post,
-          previewText: buildPostPreviewText(post.body_text)
+          previewText: buildPostPreviewText(post.body_text),
+          authorDisplayName: formatAuthorDisplayName((post as SupabasePostRow & { users?: { display_name?: string | null; username?: string | null } | null }).users ?? null),
+          authorAvatarUrl:
+            mapAvatarPathToUiValue(
+              (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
+            ) ?? DEFAULT_AVATAR_PLACEHOLDER
         }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
@@ -825,7 +851,7 @@ export const App = () => {
           const { data: inserted, error } = await supabaseClient
             .from("posts")
             .insert(postInsertPayload)
-            .select("id,body_text,created_at,status,deleted_at,group_id")
+            .select("id,body_text,created_at,status,deleted_at,is_public,group_id")
             .single();
 
           if (error || !inserted) {
@@ -851,7 +877,9 @@ export const App = () => {
 
           const insertedPost = {
             ...(inserted as SupabasePostRow),
-            previewText: buildPostPreviewText(inserted.body_text)
+            previewText: buildPostPreviewText(inserted.body_text),
+            authorDisplayName: currentUser.displayName?.trim() || currentUser.username || "You",
+            authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER
           };
 
           if ((inserted as { group_id?: string | number | null }).group_id == null) {
