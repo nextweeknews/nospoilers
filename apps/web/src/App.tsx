@@ -328,11 +328,10 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,is_public,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
+        .select("id,body_text,created_at,status,deleted_at,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
         .eq("status", "published")
         .is("deleted_at", null)
-        // Optional: keep only non-group posts in the "for-you" feed.
-        // .is("group_id", null)
+        .is("group_id", null)
         .order("created_at", { ascending: false });
 
       if (postResult.error) {
@@ -834,8 +833,7 @@ export const App = () => {
           }
 
           const audience = resolveSingleGroupAudience({
-            groupId: payload.group_id,
-            isPublic: payload.public
+            groupId: payload.group_id
           });
 
           const postInsertPayload: Record<string, unknown> = {

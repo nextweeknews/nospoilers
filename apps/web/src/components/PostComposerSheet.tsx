@@ -13,7 +13,6 @@ type PostComposerSheetProps = {
   onClose: () => void;
   onSubmit: (payload: {
     body_text: string;
-    public: boolean;
     group_id: string | null;
     catalog_item_id: string | null;
     progress_unit_id: string | null;
@@ -30,15 +29,11 @@ export const PostComposerSheet = ({ open, theme, groups, catalogItems, progressU
   const [groupId, setGroupId] = useState("");
   const [catalogItemId, setCatalogItemId] = useState("");
   const [progressUnitId, setProgressUnitId] = useState("");
-  const [isPublic, setIsPublic] = useState(true);
   const [tenorQuery, setTenorQuery] = useState("");
   const [tenorGifId, setTenorGifId] = useState("");
   const [tenorGifUrl, setTenorGifUrl] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string>();
-
-  const groupRequiredRationale = !groupId;
-  const computedPublic = groupRequiredRationale ? true : isPublic;
 
   const tenorResults = useMemo(() => {
     const q = tenorQuery.trim();
@@ -87,11 +82,6 @@ export const PostComposerSheet = ({ open, theme, groups, catalogItems, progressU
           </select>
         </label>
 
-        <label style={{ color: theme.colors.textPrimary }}>
-          <input type="checkbox" checked={computedPublic} disabled={groupRequiredRationale} onChange={(event) => setIsPublic(event.target.checked)} /> Public post
-        </label>
-        {groupRequiredRationale ? <small style={{ color: theme.colors.textSecondary }}>Visibility is locked to public because no group is selected.</small> : null}
-
         <label>
           Media picker (10MB max each)
           <input type="file" accept="image/*,video/*" multiple onChange={(event) => {
@@ -129,7 +119,6 @@ export const PostComposerSheet = ({ open, theme, groups, catalogItems, progressU
           <button type="button" onClick={async () => {
             await onSubmit({
               body_text: bodyText,
-              public: computedPublic,
               group_id: groupId || null,
               catalog_item_id: catalogItemId || null,
               progress_unit_id: progressUnitId || null,
