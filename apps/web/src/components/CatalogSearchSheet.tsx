@@ -699,7 +699,7 @@ export const CatalogSearchSheet = ({
     try {
       const response = await fetchImpl(importEndpoint, {
         method: "POST",
-        headers: getImportRequestHeaders(),
+        headers: await getImportRequestHeaders(),
         body: JSON.stringify(payload)
       });
 
