@@ -503,7 +503,7 @@ export const CatalogSearchSheet = ({
     return headers;
   };
 
-  const getImportRequestHeaders = (): Headers => {
+  const getImportRequestHeaders = async (): Promise<Headers> => {
     const headers = mergeHeaders(
       {
         "Content-Type": "application/json",
@@ -513,12 +513,25 @@ export const CatalogSearchSheet = ({
       importHeaders,
       apiKey ? { apikey: apiKey } : undefined
     );
-
+  
+    // Ensure apikey exists
     if (!headers.has("apikey")) {
       const envApiKey = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_ANON_KEY;
       if (envApiKey) headers.set("apikey", envApiKey);
     }
-
+  
+    // Ensure Authorization exists (required by catalog-import edge function)
+    if (!headers.has("authorization")) {
+      try {
+        // Uses the user's current session token via your existing supabase client
+        const { data } = await (await import("../services/supabaseClient")).supabaseClient.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) headers.set("authorization", `Bearer ${token}`);
+      } catch {
+        // If this fails, the edge function will return "Missing Authorization bearer token"
+      }
+    }
+  
     return headers;
   };
 
