@@ -182,36 +182,52 @@ export const App = () => {
     if (isAuthCallbackRoute) {
       return;
     }
-
+  
     let cancelled = false;
-
-    const syncSession = async () => {
-      try {
-        const { data, error } = await getSession();
-        if (error) throw error;
-        if (cancelled) return;
-
-        await syncAuthState(data.session);
-      } catch (_error) {
-        if (cancelled) return;
-        setCurrentUser(undefined);
-        setNeedsOnboarding(false);
+  
+    const safeSyncAuthState = async (session: Session | null) => {
+      // Extra gate: never process auth state if callback route is active during async timing.
+      if (cancelled || window.location.pathname === "/auth/callback") {
+        return;
       }
-    };
-
-    void syncSession();
-
-    const { data } = onAuthStateChange(async (_event, session) => {
+  
       try {
-        if (cancelled) return;
         await syncAuthState(session);
       } catch (_error) {
         if (cancelled) return;
         setCurrentUser(undefined);
         setNeedsOnboarding(false);
       }
+    };
+  
+    const syncSession = async () => {
+      try {
+        const { data, error } = await getSession();
+        if (error) throw error;
+        if (cancelled) return;
+        if (window.location.pathname === "/auth/callback") return;
+  
+        await safeSyncAuthState(data.session);
+      } catch (_error) {
+        if (cancelled) return;
+        setCurrentUser(undefined);
+        setNeedsOnboarding(false);
+      }
+    };
+  
+    void syncSession();
+  
+    const { data } = onAuthStateChange((event, session) => {
+      // Avoid async callback directly on Supabase listener. Defer work.
+      if (cancelled) return;
+      if (window.location.pathname === "/auth/callback") {
+        console.log("[app] ignoring auth event during callback route", event);
+        return;
+      }
+  
+      void safeSyncAuthState(session);
     });
-
+  
     return () => {
       cancelled = true;
       data.subscription.unsubscribe();
