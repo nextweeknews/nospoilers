@@ -182,15 +182,15 @@ export const App = () => {
     if (isAuthCallbackRoute) {
       return;
     }
-  
+
     let cancelled = false;
-  
+
     const safeSyncAuthState = async (session: Session | null) => {
       // Extra gate: never process auth state if callback route is active during async timing.
       if (cancelled || window.location.pathname === "/auth/callback") {
         return;
       }
-  
+
       try {
         await syncAuthState(session);
       } catch (_error) {
@@ -199,14 +199,14 @@ export const App = () => {
         setNeedsOnboarding(false);
       }
     };
-  
+
     const syncSession = async () => {
       try {
         const { data, error } = await getSession();
         if (error) throw error;
         if (cancelled) return;
         if (window.location.pathname === "/auth/callback") return;
-  
+
         await safeSyncAuthState(data.session);
       } catch (_error) {
         if (cancelled) return;
@@ -214,9 +214,9 @@ export const App = () => {
         setNeedsOnboarding(false);
       }
     };
-  
+
     void syncSession();
-  
+
     const { data } = onAuthStateChange((event, session) => {
       // Avoid async callback directly on Supabase listener. Defer work.
       if (cancelled) return;
@@ -224,10 +224,10 @@ export const App = () => {
         console.log("[app] ignoring auth event during callback route", event);
         return;
       }
-  
+
       void safeSyncAuthState(session);
     });
-  
+
     return () => {
       cancelled = true;
       data.subscription.unsubscribe();
@@ -285,7 +285,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,is_public")
+            .select("id,body_text,created_at,status,deleted_at,group_id")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -305,10 +305,11 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,is_public")
+        .select("id,body_text,created_at,status,deleted_at,group_id")
         .eq("status", "published")
         .is("deleted_at", null)
-        .eq("is_public", true)
+        // Optional: keep only non-group posts in the "for-you" feed.
+        // .is("group_id", null)
         .order("created_at", { ascending: false });
 
       if (postResult.error) {
@@ -365,7 +366,11 @@ export const App = () => {
       });
 
     void Promise.all([
-      supabaseClient.from("post_comments").select("id,body_text,created_at,status,deleted_at,is_public").order("created_at", { ascending: false }).limit(20),
+      supabaseClient
+        .from("post_comments")
+        .select("id,body_text,created_at,deleted_at")
+        .order("created_at", { ascending: false })
+        .limit(20),
       supabaseClient
         .from("post_reactions")
         .select("post_id,user_id,emoji,created_at")
@@ -380,12 +385,14 @@ export const App = () => {
       }
 
       const commentEvents =
-        ((comments.data as Array<{ id: string; body_text: string | null; created_at: string }> | null) ?? []).map((entry) => ({
-          id: `comment-${entry.id}`,
-          type: "Comment",
-          createdAt: entry.created_at,
-          text: entry.body_text ?? "New comment"
-        }));
+        ((comments.data as Array<{ id: string; body_text: string | null; created_at: string; deleted_at?: string | null }> | null) ?? [])
+          .filter((entry) => entry.deleted_at == null)
+          .map((entry) => ({
+            id: `comment-${entry.id}`,
+            type: "Comment",
+            createdAt: entry.created_at,
+            text: entry.body_text ?? "New comment"
+          }));
 
       const reactionEvents =
         ((reactions.data as Array<{ post_id: string; user_id: string; emoji: string | null; created_at: string }> | null) ?? []).map(
@@ -461,6 +468,19 @@ export const App = () => {
       .single();
 
     if (groupInsertError || !insertedGroup) {
+      console.error("[app] group insert failed", {
+        code: groupInsertError?.code,
+        message: groupInsertError?.message,
+        details: groupInsertError?.details,
+        hint: groupInsertError?.hint,
+        payload: {
+          name: normalizedName,
+          description: normalizedDescription || null,
+          privacy: createGroupPrivacy,
+          created_by: currentUser.id
+        }
+      });
+
       setCreateGroupError(groupInsertError?.message ?? "Unable to create group.");
       setIsCreatingGroup(false);
       return;
@@ -767,7 +787,6 @@ export const App = () => {
             author_user_id: currentUser.id,
             body_text: payload.body_text,
             group_id: audience.groupId,
-            is_public: audience.isPublic,
             catalog_item_id: payload.catalog_item_id,
             progress_unit_id: payload.progress_unit_id,
             tenor_gif_id: payload.tenor_gif_id,
@@ -777,7 +796,7 @@ export const App = () => {
           const { data: inserted, error } = await supabaseClient
             .from("posts")
             .insert(postInsertPayload)
-            .select("id,body_text,created_at,status,deleted_at,is_public")
+            .select("id,body_text,created_at,status,deleted_at,group_id")
             .single();
 
           if (error || !inserted) {
@@ -801,10 +820,16 @@ export const App = () => {
             }
           }
 
-          setPosts((prev) => [
-            { ...(inserted as SupabasePostRow), previewText: buildPostPreviewText(inserted.body_text) },
-            ...prev
-          ]);
+          const insertedPost = {
+            ...(inserted as SupabasePostRow),
+            previewText: buildPostPreviewText(inserted.body_text)
+          };
+
+          if ((inserted as { group_id?: string | number | null }).group_id == null) {
+            setPosts((prev) => [insertedPost, ...prev]);
+          } else {
+            setGroupPosts((prev) => [insertedPost, ...prev]);
+          }
         }}
       />
 
