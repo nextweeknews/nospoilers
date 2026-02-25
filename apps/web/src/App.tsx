@@ -303,7 +303,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,is_public,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
+            .select("id,body_text,created_at,status,deleted_at,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
