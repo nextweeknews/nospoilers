@@ -192,7 +192,7 @@ export default function App() {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,is_public")
+            .select("id,body_text,created_at,status,deleted_at,group_id")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -211,10 +211,10 @@ export default function App() {
 
       const publicFeedResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,is_public")
+        .select("id,body_text,created_at,status,deleted_at,group_id")
         .eq("status", "published")
         .is("deleted_at", null)
-        .eq("is_public", true)
+        .is("group_id", null)
         .order("created_at", { ascending: false });
 
       if (publicFeedResult.error) {
@@ -500,15 +500,13 @@ export default function App() {
                 }
 
                 const audience = resolveSingleGroupAudience({
-                  groupId: payload.group_id,
-                  isPublic: payload.public
+                  groupId: payload.group_id
                 });
 
                 const postInsert: SupabasePostInsert = {
                   author_user_id: currentUser.id,
                   body_text: payload.body_text,
                   group_id: audience.groupId,
-                  is_public: audience.isPublic,
                   catalog_item_id: payload.catalog_item_id,
                   progress_unit_id: payload.progress_unit_id,
                   tenor_gif_id: payload.tenor_gif_id,

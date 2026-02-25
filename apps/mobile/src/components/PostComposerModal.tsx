@@ -17,7 +17,6 @@ export const PostComposerModal = ({ visible, theme, groups, catalogItems, progre
   onClose: () => void;
   onSubmit: (payload: {
     body_text: string;
-    public: boolean;
     group_id: string | null;
     catalog_item_id: string | null;
     progress_unit_id: string | null;
@@ -31,7 +30,6 @@ export const PostComposerModal = ({ visible, theme, groups, catalogItems, progre
   const [groupId, setGroupId] = useState<string>("");
   const [catalogItemId, setCatalogItemId] = useState<string>("");
   const [progressUnitId, setProgressUnitId] = useState<string>("");
-  const [isPublic, setIsPublic] = useState(true);
   const [tenorQuery, setTenorQuery] = useState("");
   const [tenorGifId, setTenorGifId] = useState("");
   const [tenorGifUrl, setTenorGifUrl] = useState("");
@@ -48,11 +46,6 @@ export const PostComposerModal = ({ visible, theme, groups, catalogItems, progre
           <AppText style={{ color: theme.colors.textSecondary }}>{bodyText.length}/500</AppText>
           <AppText style={{ color: theme.colors.textSecondary }}>Group: {groups.find((g) => g.id === groupId)?.label ?? "None"}</AppText>
           <View style={styles.row}>{groups.slice(0, 4).map((group) => <Pressable key={group.id} onPress={() => setGroupId(group.id)} style={[styles.pill, { borderColor: theme.colors.border }]}><AppText>{group.label}</AppText></Pressable>)}<Pressable onPress={() => setGroupId("")} style={[styles.pill, { borderColor: theme.colors.border }]}><AppText>None</AppText></Pressable></View>
-          <AppText style={{ color: theme.colors.textSecondary }}>Visibility: {groupId ? (isPublic ? "Public" : "Group only") : "Public"}</AppText>
-          <View style={styles.row}>
-            <Pressable onPress={() => setIsPublic(true)} style={[styles.pill, { borderColor: theme.colors.border }]}><AppText>Public</AppText></Pressable>
-            <Pressable onPress={() => groupId ? setIsPublic(false) : undefined} style={[styles.pill, { borderColor: theme.colors.border, opacity: groupId ? 1 : 0.5 }]}><AppText>Group only</AppText></Pressable>
-          </View>
           <AppText style={{ color: theme.colors.textSecondary }}>Catalog: {catalogItems.find((item) => item.id === catalogItemId)?.label ?? "None"}</AppText>
           <View style={styles.row}>{catalogItems.slice(0, 4).map((item) => <Pressable key={item.id} onPress={() => setCatalogItemId(item.id)} style={[styles.pill, { borderColor: theme.colors.border }]}><AppText>{item.label}</AppText></Pressable>)}</View>
           <AppText style={{ color: theme.colors.textSecondary }}>Progress unit: {progressUnits.find((unit) => unit.id === progressUnitId)?.label ?? "None"}</AppText>
@@ -77,7 +70,7 @@ export const PostComposerModal = ({ visible, theme, groups, catalogItems, progre
               <AppText>{"Try >10MB video"}</AppText>
             </Pressable>
           </View>
-          <View style={styles.footer}><Pressable onPress={onClose}><AppText>Cancel</AppText></Pressable><Pressable onPress={async () => { await onSubmit({ body_text: bodyText, public: groupId ? isPublic : true, group_id: groupId || null, catalog_item_id: catalogItemId || null, progress_unit_id: progressUnitId || null, tenor_gif_id: tenorGifId || null, tenor_gif_url: tenorGifUrl || null, attachments }); onClose(); }} style={[styles.submit, { backgroundColor: theme.colors.accent }]}><AppText style={{ color: theme.colors.accentText }}>Publish</AppText></Pressable></View>
+          <View style={styles.footer}><Pressable onPress={onClose}><AppText>Cancel</AppText></Pressable><Pressable onPress={async () => { await onSubmit({ body_text: bodyText, group_id: groupId || null, catalog_item_id: catalogItemId || null, progress_unit_id: progressUnitId || null, tenor_gif_id: tenorGifId || null, tenor_gif_url: tenorGifUrl || null, attachments }); onClose(); }} style={[styles.submit, { backgroundColor: theme.colors.accent }]}><AppText style={{ color: theme.colors.accentText }}>Publish</AppText></Pressable></View>
         </View>
       </View>
     </Modal>
