@@ -12,10 +12,11 @@ type GroupScreenProps = {
   status: "loading" | "error" | "empty" | "ready";
   errorMessage?: string;
   onCreateGroup: () => void;
+  onSelectGroup: (groupId: string) => void;
   theme: AppTheme;
 };
 
-export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, theme }: GroupScreenProps) => {
+export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, onSelectGroup, theme }: GroupScreenProps) => {
   const placeholderText =
     status === "loading"
       ? "Loading your groups from Supabase…"
@@ -36,13 +37,18 @@ export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, theme
           </article>
         ) : (
           groups.map((group) => (
-            <article key={group.id} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.md, display: "grid", gridTemplateColumns: "58px 1fr", gap: spacingTokens.md, alignItems: "center" }}>
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => onSelectGroup(group.id)}
+              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.md, display: "grid", gridTemplateColumns: "58px 1fr", gap: spacingTokens.md, alignItems: "center", textAlign: "left", background: theme.colors.surface, cursor: "pointer" }}
+            >
               {group.coverUrl ? <img src={group.coverUrl} alt={`${group.name} cover`} style={{ width: 58, height: 58, borderRadius: radiusTokens.md, objectFit: "cover" }} /> : <div style={{ width: 58, height: 58, borderRadius: radiusTokens.md, background: theme.colors.surfaceMuted }} />}
               <div>
                 <h3 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 16 }}>{group.name}</h3>
                 <p style={{ margin: 0, color: theme.colors.textSecondary, fontSize: 13 }}>{group.description ?? "No description yet."}</p>
               </div>
-            </article>
+            </button>
           ))
         )}
       </div>

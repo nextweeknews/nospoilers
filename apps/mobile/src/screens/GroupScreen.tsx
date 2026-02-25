@@ -14,10 +14,11 @@ type GroupScreenProps = {
   status: "loading" | "error" | "empty" | "ready";
   errorMessage?: string;
   onCreateGroup: () => void;
+  onSelectGroup: (groupId: string) => void;
   theme: AppTheme;
 };
 
-export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, theme }: GroupScreenProps) => {
+export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, onSelectGroup, theme }: GroupScreenProps) => {
   const placeholderText =
     status === "loading"
       ? "Loading your groups from Supabase…"
@@ -35,13 +36,13 @@ export const GroupScreen = ({ groups, status, errorMessage, onCreateGroup, theme
           </View>
         ) : (
           groups.map((group) => (
-            <View key={group.id} style={[styles.groupRow, { borderColor: theme.colors.border }]}> 
+            <Pressable key={group.id} onPress={() => onSelectGroup(group.id)} style={[styles.groupRow, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
               {group.coverUrl ? <Image source={{ uri: group.coverUrl }} style={styles.groupCover} /> : <View style={[styles.groupCover, { backgroundColor: theme.colors.surfaceMuted }]} />}
               <View style={styles.headerText}>
                 <AppText style={[styles.title, { color: theme.colors.textPrimary }]}>{group.name}</AppText>
                 <AppText style={[styles.progress, { color: theme.colors.textSecondary }]}>{group.description ?? "No description yet."}</AppText>
               </View>
-            </View>
+            </Pressable>
           ))
         )}
       </ScrollView>

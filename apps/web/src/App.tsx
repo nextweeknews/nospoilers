@@ -141,6 +141,7 @@ export const App = () => {
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [showCreatePostSheet, setShowCreatePostSheet] = useState(false);
   const [groupPosts, setGroupPosts] = useState<PostEntity[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [catalogItems, setCatalogItems] = useState<OptionRow[]>([]);
   const [progressUnits, setProgressUnits] = useState<OptionRow[]>([]);
   const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
@@ -278,6 +279,7 @@ export const App = () => {
         );
         setGroups(loadedGroups);
         setGroupStatus(loadedGroups.length ? "ready" : "empty");
+        setSelectedGroupId((current) => (current && !loadedGroups.some((group) => group.id === current) ? null : current));
 
         const groupIds = loadedGroups.map((group) => group.id);
         if (!groupIds.length) {
@@ -420,6 +422,9 @@ export const App = () => {
   };
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
+
+  const selectedGroup = selectedGroupId ? groups.find((group) => group.id === selectedGroupId) : undefined;
+  const selectedGroupPosts = selectedGroupId ? groupPosts.filter((post) => (post as { group_id?: string | null }).group_id === selectedGroupId) : [];
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
@@ -733,19 +738,43 @@ export const App = () => {
 
           {mainView === "groups" ? (
             <>
-              <GroupScreen
-                groups={groups.map((group) => ({
-                  id: group.id,
-                  name: group.name,
-                  description: group.description,
-                  coverUrl: mapAvatarPathToUiValue(group.avatar_path)
-                }))}
-                status={groupStatus}
-                errorMessage={groupError}
-                theme={theme}
-                onCreateGroup={() => setShowCreateGroupSheet(true)}
-              />
-              <small style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</small>
+              {selectedGroup ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGroupId(null)}
+                    style={{ justifySelf: "start", border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: "8px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}
+                  >
+                    ← Back to groups
+                  </button>
+                  <PublicFeedScreen
+                    theme={theme}
+                    status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
+                    errorMessage={groupError}
+                    posts={selectedGroupPosts}
+                    title={`${selectedGroup.name} Feed`}
+                    loadingMessage="Loading group posts…"
+                    emptyMessage="No posts in this group yet."
+                  />
+                </>
+              ) : (
+                <>
+                  <GroupScreen
+                    groups={groups.map((group) => ({
+                      id: group.id,
+                      name: group.name,
+                      description: group.description,
+                      coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+                    }))}
+                    status={groupStatus}
+                    errorMessage={groupError}
+                    theme={theme}
+                    onCreateGroup={() => setShowCreateGroupSheet(true)}
+                    onSelectGroup={setSelectedGroupId}
+                  />
+                  <small style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</small>
+                </>
+              )}
             </>
           ) : null}
 

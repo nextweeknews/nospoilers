@@ -8,12 +8,30 @@ type FeedPost = {
   created_at: string;
 };
 
-export const PublicFeedScreen = ({ theme, status, errorMessage, posts }: { theme: AppTheme; status: "loading" | "ready" | "empty" | "error"; errorMessage?: string; posts: FeedPost[] }) => (
+type PublicFeedScreenProps = {
+  theme: AppTheme;
+  status: "loading" | "ready" | "empty" | "error";
+  errorMessage?: string;
+  posts: FeedPost[];
+  title?: string;
+  loadingMessage?: string;
+  emptyMessage?: string;
+};
+
+export const PublicFeedScreen = ({
+  theme,
+  status,
+  errorMessage,
+  posts,
+  title = "For You",
+  loadingMessage = "Loading public posts…",
+  emptyMessage = "No public posts yet."
+}: PublicFeedScreenProps) => (
   <View style={styles.root}>
-    <AppText style={{ color: theme.colors.textPrimary, fontWeight: "700", fontSize: 18 }}>For You</AppText>
-    {status === "loading" ? <AppText style={{ color: theme.colors.textSecondary }}>Loading public posts…</AppText> : null}
-    {status === "error" ? <AppText style={{ color: "#b42318" }}>{errorMessage ?? "Unable to load public posts."}</AppText> : null}
-    {status === "empty" ? <AppText style={{ color: theme.colors.textSecondary }}>No public posts yet.</AppText> : null}
+    <AppText style={{ color: theme.colors.textPrimary, fontWeight: "700", fontSize: 18 }}>{title}</AppText>
+    {status === "loading" ? <AppText style={{ color: theme.colors.textSecondary }}>{loadingMessage}</AppText> : null}
+    {status === "error" ? <AppText style={{ color: "#b42318" }}>{errorMessage ?? "Unable to load posts."}</AppText> : null}
+    {status === "empty" ? <AppText style={{ color: theme.colors.textSecondary }}>{emptyMessage}</AppText> : null}
     {posts.map((post) => (
       <View key={post.id} style={[styles.card, { borderColor: theme.colors.border }]}>
         <AppText style={{ color: theme.colors.textPrimary }}>{post.previewText ?? "(No text)"}</AppText>
