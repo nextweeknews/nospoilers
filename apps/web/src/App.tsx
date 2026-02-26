@@ -1430,7 +1430,7 @@ export const App = () => {
                       watched_episode_count: watchedEpisodeCount ?? null
                     };
 
-                    const { error } = await supabaseClient.from("user_shelf").upsert(payload, { onConflict: "user_id,catalog_item_id" });
+                    const { error } = await supabaseClient.from("user_media_progress").upsert(payload, { onConflict: "user_id,catalog_item_id" });
                     if (error) {
                       console.error("[app] failed to update shelf progress", error);
                       return;
