@@ -18,7 +18,6 @@ import {
   type SupabasePostRow,
   type SupabaseUserProfileRow
 } from "@nospoilers/types";
-import { GroupScreen } from "./screens/GroupScreen";
 import { AuthCallbackScreen } from "./screens/AuthCallbackScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
@@ -36,6 +35,7 @@ import { supabaseClient } from "./services/supabaseClient";
 import { profileNeedsOnboarding } from "./profileOnboarding";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
+const MAIN_VIEW_KEY = "nospoilers:web:last-main-view";
 
 type MainView = "groups" | "for-you" | "profile";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
@@ -151,7 +151,10 @@ const mapUserWithProfile = async (
 };
 
 export const App = () => {
-  const [mainView, setMainView] = useState<MainView>("groups");
+  const [mainView, setMainView] = useState<MainView>(() => {
+    const saved = window.sessionStorage.getItem(MAIN_VIEW_KEY);
+    return saved === "groups" || saved === "for-you" || saved === "profile" ? saved : "for-you";
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -735,6 +738,10 @@ export const App = () => {
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
 
+  useEffect(() => {
+    window.sessionStorage.setItem(MAIN_VIEW_KEY, mainView);
+  }, [mainView]);
+
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
   const selectedGroupCatalogItems = selectedGroupId
     ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
@@ -998,7 +1005,7 @@ export const App = () => {
                       return;
                     }
                     setAuthStatus("Signed out.");
-                    setMainView("groups");
+                    setMainView("for-you");
                     setCurrentUser(undefined);
                   }}
                   style={menuItem(theme)}
@@ -1019,27 +1026,13 @@ export const App = () => {
             background: theme.colors.background
           }}
         >
-          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs }}>
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs, borderRight: `1px solid ${theme.colors.border}` }}>
             <button
               type="button"
               onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setSelectedShelfCatalogItemId(null); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
               style={listItemStyle(theme, mainView === "for-you")}
             >
               For you
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreatePostSheet(true)}
-              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "10px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer", textAlign: "left" }}
-            >
-              + Create post
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCreateGroupSheet(true)}
-              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "10px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer", textAlign: "left" }}
-            >
-              + Create group
             </button>
             <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 14px" }}>Your groups</strong>
             {groups.map((group) => {
@@ -1055,9 +1048,16 @@ export const App = () => {
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setShowCreateGroupSheet(true)}
+              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "10px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer", textAlign: "left", marginTop: spacingTokens.sm }}
+            >
+              + Create group
+            </button>
           </aside>
 
-          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs }}>
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs, borderRight: `1px solid ${theme.colors.border}` }}>
             {mainView === "for-you" ? (
               <>
                 <button
@@ -1103,7 +1103,8 @@ export const App = () => {
             ) : null}
           </aside>
 
-          <section style={{ overflowY: "auto", padding: spacingTokens.md, minWidth: 0 }}>
+          <section style={{ overflowY: "auto", padding: spacingTokens.md, minWidth: 0, borderRight: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateRows: "1fr auto", gap: spacingTokens.sm }}>
+            <div style={{ minHeight: 0 }}>
             {mainView === "profile" ? (
               showProfileSettings ? (
                 <ProfileSettingsScreen
@@ -1112,7 +1113,7 @@ export const App = () => {
                   onAccountDeleted={() => {
                     setCurrentUser(undefined);
                     setNeedsOnboarding(false);
-                    setMainView("groups");
+                    setMainView("for-you");
                     setMenuOpen(false);
                   }}
                   onThemePreferenceChanged={onThemePreferenceChanged}
@@ -1174,26 +1175,35 @@ export const App = () => {
                   />
                 </>
               ) : (
-                <GroupScreen
-                  groups={groups.map((group) => ({
-                    id: String(group.id),
-                    name: group.name,
-                    description: group.description,
-                    coverUrl: mapAvatarPathToUiValue(group.avatar_path)
-                  }))}
-                  status={groupStatus}
-                  errorMessage={groupError}
-                  theme={theme}
-                  onCreateGroup={() => setShowCreateGroupSheet(true)}
-                  onSelectGroup={(groupId) => {
-                    setSelectedGroupId(groupId);
-                    setSelectedGroupCatalogItemId(null);
-                  }}
-                />
+                <p style={{ margin: 0, color: theme.colors.textSecondary }}>Select a group from the left column.</p>
               )
             ) : null}
             {catalogSearchError ? <small style={{ color: "#b42318" }}>Catalog search/import error: {catalogSearchError}</small> : null}
             {authStatus ? <small style={{ color: theme.colors.textSecondary }}>{authStatus}</small> : null}
+            </div>
+
+            {mainView !== "profile" ? (
+              <div style={{ position: "sticky", bottom: 0, background: theme.colors.background, paddingTop: spacingTokens.xs }}>
+                <input
+                  type="text"
+                  value=""
+                  readOnly
+                  onFocus={() => setShowCreatePostSheet(true)}
+                  onClick={() => setShowCreatePostSheet(true)}
+                  placeholder="Share an update…"
+                  aria-label="Create a post"
+                  style={{
+                    width: "100%",
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: radiusTokens.md,
+                    background: theme.colors.surface,
+                    color: theme.colors.textSecondary,
+                    padding: "12px 14px",
+                    cursor: "text"
+                  }}
+                />
+              </div>
+            ) : null}
           </section>
 
           <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
