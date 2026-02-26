@@ -543,6 +543,7 @@ export const App = () => {
           const progressPercent = itemType === "book"
             ? Math.max(0, Math.min(100, Math.round(progressPercentValue ?? (currentPage && pageCount ? (currentPage / pageCount) * 100 : 0))))
             : (() => {
+                if (progressPercentValue != null) return Math.max(0, Math.min(100, Math.round(progressPercentValue)));
                 if (!tvUnits.length || !currentSeason || !currentEpisode) return 0;
                 const checkedEpisodes = tvUnits.filter((unit) => (
                   unit.season_number < currentSeason || (unit.season_number === currentSeason && unit.episode_number <= currentEpisode)
@@ -554,7 +555,7 @@ export const App = () => {
             ? (progressPercentValue != null
                 ? `${Math.round(progressPercentValue)}%`
                 : `Page ${currentPage ?? 0}/${pageCount ?? "?"}`)
-            : `Season ${currentSeason ?? 1}, Episode ${currentEpisode ?? 1}`;
+            : `${Math.round(progressPercent)}% watched`;
 
           return {
             catalogItemId,
@@ -1079,7 +1080,8 @@ export const App = () => {
                     currentPage,
                     progressPercent,
                     currentSeasonNumber,
-                    currentEpisodeNumber
+                    currentEpisodeNumber,
+                    watchedEpisodeCount
                   }) => {
                     if (!currentUser) return;
                     const nowIso = new Date().toISOString();
@@ -1104,17 +1106,16 @@ export const App = () => {
                       if (item.catalogItemId !== catalogItemId) return item;
                       const nextProgressSummary = item.itemType === "book"
                         ? (progressPercent != null ? `${Math.round(progressPercent)}%` : `Page ${currentPage ?? item.currentPage ?? 0}/${item.pageCount ?? "?"}`)
-                        : `Season ${currentSeasonNumber ?? item.currentSeasonNumber ?? 1}, Episode ${currentEpisodeNumber ?? item.currentEpisodeNumber ?? 1}`;
+                        : `${Math.round((watchedEpisodeCount != null && item.tvProgressUnits.length)
+                            ? (watchedEpisodeCount / item.tvProgressUnits.length) * 100
+                            : (progressPercent ?? item.progressPercent))}% watched`;
                       const nextProgressPercent = item.itemType === "book"
                         ? Math.max(0, Math.min(100, Math.round(progressPercent ?? (currentPage && item.pageCount ? (currentPage / item.pageCount) * 100 : item.progressPercent))))
                         : (() => {
-                            const season = currentSeasonNumber ?? item.currentSeasonNumber;
-                            const episode = currentEpisodeNumber ?? item.currentEpisodeNumber;
-                            if (!season || !episode || !item.tvProgressUnits.length) return 0;
-                            const checkedEpisodes = item.tvProgressUnits.filter((unit) => (
-                              unit.seasonNumber < season || (unit.seasonNumber === season && unit.episodeNumber <= episode)
-                            )).length;
-                            return Math.max(0, Math.min(100, Math.round((checkedEpisodes / item.tvProgressUnits.length) * 100)));
+                            if (watchedEpisodeCount != null && item.tvProgressUnits.length) {
+                              return Math.max(0, Math.min(100, Math.round((watchedEpisodeCount / item.tvProgressUnits.length) * 100)));
+                            }
+                            return Math.max(0, Math.min(100, Math.round(progressPercent ?? item.progressPercent)));
                           })();
                       return {
                         ...item,
