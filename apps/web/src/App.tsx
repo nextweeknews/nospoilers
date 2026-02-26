@@ -26,7 +26,7 @@ import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { PublicFeedScreen } from "./screens/PublicFeedScreen";
 import { NotificationsScreen } from "./screens/NotificationsScreen";
-import { ProfileTabScreen } from "./screens/ProfileTabScreen";
+import { ProfileTabScreen, type ShelfItem } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
 import {
   CatalogSearchSheet,
@@ -52,13 +52,6 @@ type PostEntity = SupabasePostRow & {
 };
 
 type OptionRow = { id: string; title: string };
-
-type ShelfItem = {
-  catalogItemId: string;
-  title: string;
-  status: string;
-  progressLabel: string;
-};
 
 type GroupCatalogItem = {
   groupId: string;
@@ -486,7 +479,7 @@ export const App = () => {
 
       const shelfResult = await supabaseClient
         .from("user_media_progress")
-        .select("catalog_item_id,status,current_sequence_index,catalog_items!user_media_progress_catalog_item_id_fkey(title)")
+        .select("catalog_item_id,status,started_at,completed_at,updated_at,current_page,current_season_number,current_episode_number,progress_percent,catalog_items!user_media_progress_catalog_item_id_fkey(id,title,item_type,page_count,cover_image_url),catalog_progress_units!user_media_progress_current_unit_id_fkey(id,season_number,episode_number,title)")
         .eq("user_id", currentUser.id)
         .order("updated_at", { ascending: false });
 
@@ -494,14 +487,98 @@ export const App = () => {
         console.error("[app] user_media_progress load failed", shelfResult.error);
         setShelfItems([]);
       } else {
-        setShelfItems(
-          (((shelfResult.data as Array<{ catalog_item_id: string | number; status: string; current_sequence_index: number; catalog_items?: { title?: string | null } | null }> | null) ?? [])).map((row) => ({
-            catalogItemId: String(row.catalog_item_id),
-            title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+        const rows = (shelfResult.data as Array<{
+          catalog_item_id: string | number;
+          status: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          updated_at?: string | null;
+          current_page?: number | null;
+          current_season_number?: number | null;
+          current_episode_number?: number | null;
+          progress_percent?: number | null;
+          catalog_items?: { id: string | number; title?: string | null; item_type?: "book" | "tv_show" | null; page_count?: number | null; cover_image_url?: string | null } | Array<{ id: string | number; title?: string | null; item_type?: "book" | "tv_show" | null; page_count?: number | null; cover_image_url?: string | null }> | null;
+          catalog_progress_units?: { id?: string | number | null; season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ id?: string | number | null; season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
+        }> | null) ?? [];
+
+        const catalogIds = rows.map((row) => row.catalog_item_id);
+        const { data: allUnits, error: allUnitsError } = catalogIds.length
+          ? await supabaseClient
+              .from("catalog_progress_units")
+              .select("id,catalog_item_id,season_number,episode_number,title")
+              .in("catalog_item_id", catalogIds)
+              .order("season_number", { ascending: true })
+              .order("episode_number", { ascending: true })
+          : { data: [], error: null };
+
+        if (allUnitsError) {
+          console.error("[app] catalog_progress_units for shelf load failed", allUnitsError);
+        }
+
+        const unitsByCatalogId = new Map<string, Array<{ id: string; season_number: number; episode_number: number; title?: string }>>();
+        (((allUnits as Array<{ id: string | number; catalog_item_id: string | number; season_number?: number | null; episode_number?: number | null; title?: string | null }> | null) ?? [])).forEach((unit) => {
+          const key = String(unit.catalog_item_id);
+          const list = unitsByCatalogId.get(key) ?? [];
+          list.push({
+            id: String(unit.id),
+            season_number: Number(unit.season_number ?? 0),
+            episode_number: Number(unit.episode_number ?? 0),
+            title: unit.title ?? undefined
+          });
+          unitsByCatalogId.set(key, list);
+        });
+
+        setShelfItems(rows.map((row) => {
+          const catalogItemId = String(row.catalog_item_id);
+          const catalogItem = Array.isArray(row.catalog_items) ? row.catalog_items[0] : row.catalog_items;
+          const currentUnit = Array.isArray(row.catalog_progress_units) ? row.catalog_progress_units[0] : row.catalog_progress_units;
+          const itemType = catalogItem?.item_type === "tv_show" ? "tv_show" : "book";
+          const tvUnits = unitsByCatalogId.get(catalogItemId) ?? [];
+          const pageCount = catalogItem?.page_count ?? null;
+          const currentPage = row.current_page ?? null;
+          const currentSeason = row.current_season_number ?? currentUnit?.season_number ?? null;
+          const currentEpisode = row.current_episode_number ?? currentUnit?.episode_number ?? null;
+          const progressPercentValue = row.progress_percent ?? null;
+
+          const progressPercent = itemType === "book"
+            ? Math.max(0, Math.min(100, Math.round(progressPercentValue ?? (currentPage && pageCount ? (currentPage / pageCount) * 100 : 0))))
+            : (() => {
+                if (!tvUnits.length) return 0;
+                const seasons = [...new Set(tvUnits.map((unit) => unit.season_number).filter((v) => v > 0))].sort((a, b) => a - b);
+                if (!seasons.length || !currentSeason || currentSeason < 1) return 0;
+                const seasonIndex = Math.max(0, seasons.findIndex((season) => season === currentSeason));
+                const seasonBase = seasonIndex / seasons.length;
+                const episodesInSeason = tvUnits.filter((unit) => unit.season_number === currentSeason);
+                const episodeFraction = episodesInSeason.length
+                  ? Math.min(1, Math.max(0, (currentEpisode ?? 0) / episodesInSeason.length)) / seasons.length
+                  : 0;
+                return Math.max(0, Math.min(100, Math.round((seasonBase + episodeFraction) * 100)));
+              })();
+
+          const progressSummary = itemType === "book"
+            ? (progressPercentValue != null
+                ? `${Math.round(progressPercentValue)}%`
+                : `Page ${currentPage ?? 0}/${pageCount ?? "?"}`)
+            : `Season ${currentSeason ?? 1}, Episode ${currentEpisode ?? 1}`;
+
+          return {
+            catalogItemId,
+            title: catalogItem?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+            itemType,
+            coverImageUrl: catalogItem?.cover_image_url ?? undefined,
             status: row.status,
-            progressLabel: `Unit ${row.current_sequence_index}`
-          }))
-        );
+            addedAt: row.started_at || row.updated_at || new Date().toISOString(),
+            completedAt: row.completed_at,
+            progressSummary,
+            progressPercent,
+            currentPage,
+            pageCount,
+            currentSeasonNumber: currentSeason,
+            currentEpisodeNumber: currentEpisode,
+            progressPercentValue,
+            tvProgressUnits: tvUnits.map((unit) => ({ id: unit.id, seasonNumber: unit.season_number, episodeNumber: unit.episode_number, title: unit.title }))
+          };
+        }));
       }
 
       if (activeGroupIds.length) {
@@ -1000,6 +1077,54 @@ export const App = () => {
                   onEditProfile={() => setShowProfileSettings(true)}
                   onAccountSettings={() => setShowProfileSettings(true)}
                   shelfItems={shelfItems}
+                  onSaveShelfProgress={async ({
+                    catalogItemId,
+                    status,
+                    currentPage,
+                    progressPercent,
+                    currentSeasonNumber,
+                    currentEpisodeNumber
+                  }) => {
+                    if (!currentUser) return;
+                    const nowIso = new Date().toISOString();
+                    const payload = {
+                      user_id: currentUser.id,
+                      catalog_item_id: Number(catalogItemId),
+                      status,
+                      current_page: currentPage ?? null,
+                      progress_percent: progressPercent ?? null,
+                      current_season_number: currentSeasonNumber ?? null,
+                      current_episode_number: currentEpisodeNumber ?? null,
+                      completed_at: status === "completed" ? nowIso : null,
+                      updated_at: nowIso
+                    };
+
+                    const { error } = await supabaseClient.from("user_media_progress").upsert(payload, { onConflict: "user_id,catalog_item_id" });
+                    if (error) {
+                      throw new Error(error.message);
+                    }
+
+                    setShelfItems((prev) => prev.map((item) => {
+                      if (item.catalogItemId !== catalogItemId) return item;
+                      const nextProgressSummary = item.itemType === "book"
+                        ? (progressPercent != null ? `${Math.round(progressPercent)}%` : `Page ${currentPage ?? item.currentPage ?? 0}/${item.pageCount ?? "?"}`)
+                        : `Season ${currentSeasonNumber ?? item.currentSeasonNumber ?? 1}, Episode ${currentEpisodeNumber ?? item.currentEpisodeNumber ?? 1}`;
+                      const nextProgressPercent = item.itemType === "book"
+                        ? Math.max(0, Math.min(100, Math.round(progressPercent ?? (currentPage && item.pageCount ? (currentPage / item.pageCount) * 100 : item.progressPercent))))
+                        : item.progressPercent;
+                      return {
+                        ...item,
+                        status,
+                        completedAt: status === "completed" ? nowIso : null,
+                        progressSummary: nextProgressSummary,
+                        progressPercent: nextProgressPercent,
+                        currentPage: currentPage ?? item.currentPage ?? null,
+                        progressPercentValue: progressPercent ?? item.progressPercentValue ?? null,
+                        currentSeasonNumber: currentSeasonNumber ?? item.currentSeasonNumber ?? null,
+                        currentEpisodeNumber: currentEpisodeNumber ?? item.currentEpisodeNumber ?? null
+                      };
+                    }));
+                  }}
                 />
                 <button
                   type="button"
@@ -1239,7 +1364,23 @@ export const App = () => {
 
             setShelfItems((prev) => {
               const next = prev.filter((entry) => entry.catalogItemId !== String(catalogItemId));
-              return [{ catalogItemId: String(catalogItemId), title: imported.catalog_item.title, status: "in_progress", progressLabel: "Unit 0" }, ...next];
+              return [{
+                catalogItemId: String(catalogItemId),
+                title: imported.catalog_item.title,
+                itemType: imported.catalog_item.item_type === "tv_show" ? "tv_show" : "book",
+                coverImageUrl: imported.catalog_item.cover_image_url ?? undefined,
+                status: "in_progress",
+                addedAt: new Date().toISOString(),
+                completedAt: null,
+                progressSummary: imported.catalog_item.item_type === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+                progressPercent: 0,
+                currentPage: null,
+                pageCount: null,
+                currentSeasonNumber: null,
+                currentEpisodeNumber: null,
+                progressPercentValue: null,
+                tvProgressUnits: []
+              }, ...next];
             });
           }}
           onAddToGroup={async (imported, _selected, groupId) => {
