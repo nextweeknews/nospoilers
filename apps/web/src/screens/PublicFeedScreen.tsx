@@ -78,7 +78,7 @@ export const PublicFeedScreen = ({
           loading="lazy"
         />
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "nowrap", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", minWidth: 0 }}>
             <strong style={{ color: theme.colors.textPrimary, fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
               {post.authorDisplayName}
             </strong>
@@ -116,7 +116,10 @@ export const PublicFeedScreen = ({
                 </span>
               </span>
             ) : null}
-            <small style={{ color: theme.colors.textSecondary, marginLeft: "auto", flexShrink: 0 }}>
+            <span style={{ color: theme.colors.textSecondary, flexShrink: 0 }} aria-hidden="true">
+              ·
+            </span>
+            <small style={{ color: theme.colors.textSecondary, flexShrink: 0 }}>
               {formatRelativeTimestamp(post.created_at)}
             </small>
           </div>
@@ -129,7 +132,11 @@ export const PublicFeedScreen = ({
                 marginLeft: 10,
                 color: theme.colors.textSecondary,
                 fontSize: 12,
-                fontWeight: 500
+                fontWeight: 500,
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis"
               }}
             >
               <span
@@ -152,7 +159,7 @@ export const PublicFeedScreen = ({
               {post.progressLine}
             </span>
           ) : null}
-          <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap" }}>{post.previewText ?? "(No text)"}</p>
+          <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap", fontSize: 13, fontWeight: 400 }}>{post.previewText ?? "(No text)"}</p>
         </div>
       </article>
     ))}
