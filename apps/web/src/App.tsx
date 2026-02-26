@@ -947,6 +947,16 @@ export const App = () => {
           gridTemplateRows: "auto 1fr"
         }}
       >
+        <style>{`
+          button, select {
+            border-radius: ${radiusTokens.pill}px;
+            transition: box-shadow 140ms ease, border-color 140ms ease, filter 140ms ease;
+          }
+
+          button:hover, select:hover {
+            filter: brightness(1.02);
+          }
+        `}</style>
         <header
           style={{
             padding: spacingTokens.md,
