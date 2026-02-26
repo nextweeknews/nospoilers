@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
@@ -59,6 +59,17 @@ type GroupCatalogItem = {
   coverImageUrl?: string;
 };
 
+type TrendingTimeframe = "24h" | "7d" | "30d";
+type TrendingTypeFilter = "all" | "book" | "tv_show";
+
+type TrendingItem = {
+  catalogItemId: string;
+  title: string;
+  itemType: "book" | "tv_show";
+  coverImageUrl?: string;
+  addCount: number;
+};
+
 type CatalogSearchContext =
   | { mode: "post" }
   | { mode: "group"; groupId: string }
@@ -88,6 +99,28 @@ const DEFAULT_COVER_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
 const HOME_ICON = "⌂";
 const FOR_YOU_ICON = "✦";
 const GROUP_FALLBACK_ICON = "👥";
+
+const TRENDING_COUNT_FIELDS: Record<TrendingTimeframe, string[]> = {
+  "24h": ["count_24h", "adds_24h", "last_24h_count"],
+  "7d": ["count_7d", "adds_7d", "last_7d_count"],
+  "30d": ["count_30d", "adds_30d", "last_30d_count"]
+};
+
+const getTrendingCountForRow = (row: Record<string, unknown>, timeframe: TrendingTimeframe): number => {
+  const timeframeFields = TRENDING_COUNT_FIELDS[timeframe];
+  for (const field of timeframeFields) {
+    const value = row[field];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+
+  const fallbackFields = ["add_count", "count", "total_add_count", "adds_total"];
+  for (const field of fallbackFields) {
+    const value = row[field];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+
+  return 0;
+};
 
 const formatAuthorDisplayName = (author: { display_name?: string | null; username?: string | null } | null): string => {
   const displayName = author?.display_name?.trim();
@@ -222,6 +255,11 @@ export const App = () => {
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
+  const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("7d");
+  const [trendingTypeFilter, setTrendingTypeFilter] = useState<TrendingTypeFilter>("all");
+  const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
+  const [trendingStatus, setTrendingStatus] = useState<LoadStatus>("loading");
+  const [trendingError, setTrendingError] = useState<string>();
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -752,6 +790,94 @@ export const App = () => {
   }, [currentUser]);
 
   useEffect(() => {
+    if (!currentUser) {
+      setTrendingItems([]);
+      setTrendingStatus("empty");
+      setTrendingError(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTrending = async () => {
+      setTrendingStatus("loading");
+      setTrendingError(undefined);
+
+      const [groupResult, userResult] = await Promise.all([
+        supabaseClient.from("catalog_item_group_add_counts").select("*").limit(400),
+        supabaseClient.from("catalog_item_user_add_counts").select("*").eq("user_id", currentUser.id).limit(400)
+      ]);
+
+      if (cancelled) return;
+
+      if (groupResult.error || userResult.error) {
+        setTrendingItems([]);
+        setTrendingStatus("error");
+        setTrendingError(groupResult.error?.message ?? userResult.error?.message ?? "Unable to load trending titles.");
+        return;
+      }
+
+      const scoreByCatalogId = new Map<string, number>();
+      const rows = [
+        ...(((groupResult.data as Record<string, unknown>[] | null) ?? [])),
+        ...(((userResult.data as Record<string, unknown>[] | null) ?? []))
+      ];
+
+      rows.forEach((row) => {
+        const rawId = row.catalog_item_id;
+        const catalogId = typeof rawId === "number" || typeof rawId === "string" ? String(rawId) : "";
+        if (!catalogId) return;
+        const count = getTrendingCountForRow(row, trendingTimeframe);
+        if (count <= 0) return;
+        scoreByCatalogId.set(catalogId, (scoreByCatalogId.get(catalogId) ?? 0) + count);
+      });
+
+      if (!scoreByCatalogId.size) {
+        setTrendingItems([]);
+        setTrendingStatus("empty");
+        return;
+      }
+
+      const catalogIds = [...scoreByCatalogId.keys()];
+      const { data: catalogRows, error: catalogError } = await supabaseClient
+        .from("catalog_items")
+        .select("id,title,item_type,cover_image_url")
+        .in("id", catalogIds)
+        .limit(100);
+
+      if (cancelled) return;
+
+      if (catalogError) {
+        setTrendingItems([]);
+        setTrendingStatus("error");
+        setTrendingError(catalogError.message);
+        return;
+      }
+
+      const mapped = (((catalogRows as Array<{id: string | number; title?: string | null; item_type?: string | null; cover_image_url?: string | null}> | null) ?? [])
+        .map((row) => ({
+          catalogItemId: String(row.id),
+          title: row.title?.trim() || `Catalog #${row.id}`,
+          itemType: row.item_type === "tv_show" ? "tv_show" as const : "book" as const,
+          coverImageUrl: row.cover_image_url ?? undefined,
+          addCount: scoreByCatalogId.get(String(row.id)) ?? 0
+        }))
+        .filter((row) => trendingTypeFilter === "all" ? true : row.itemType === trendingTypeFilter)
+        .sort((a, b) => b.addCount - a.addCount)
+        .slice(0, 12));
+
+      setTrendingItems(mapped);
+      setTrendingStatus(mapped.length ? "ready" : "empty");
+    };
+
+    void loadTrending();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, trendingTimeframe, trendingTypeFilter]);
+
+  useEffect(() => {
     if (!currentUser || !selectedCatalogItemIdForProgress) {
       return;
     }
@@ -800,6 +926,8 @@ export const App = () => {
   }, [mainView, selectedGroupId]);
 
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
+  const shelfPreviewItems = useMemo(() => shelfItems.slice(0, 6), [shelfItems]);
+
   const selectedGroupCatalogItems = selectedGroupId
     ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
     : [];
@@ -1099,7 +1227,7 @@ export const App = () => {
         <main
           style={{
             display: "grid",
-            gridTemplateColumns: "320px 320px minmax(420px, 1fr) 220px",
+            gridTemplateColumns: "280px 280px minmax(420px, 1fr) 340px",
             justifyContent: "start",
             minHeight: 0,
             background: theme.colors.background
@@ -1385,8 +1513,88 @@ export const App = () => {
             ) : null}
           </section>
 
-          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
-            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Trending</h3>
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.md }}>
+            <section style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: spacingTokens.sm, background: theme.colors.surface }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacingTokens.xs }}>
+                <h3 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 14 }}>Your shelf</h3>
+                <button
+                  type="button"
+                  onClick={() => { setMainView("profile"); setShowProfileSettings(false); }}
+                  style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, padding: "4px 10px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}
+                >
+                  View all
+                </button>
+              </div>
+              {shelfPreviewItems.length ? shelfPreviewItems.map((item) => (
+                <article
+                  key={`right-shelf-${item.catalogItemId}`}
+                  style={{
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: radiusTokens.md,
+                    padding: spacingTokens.sm,
+                    display: "grid",
+                    gridTemplateColumns: "48px 1fr auto",
+                    alignItems: "center",
+                    gap: spacingTokens.xs,
+                    background: `linear-gradient(to right, rgba(34,197,94,0.16) ${item.progressPercent}%, ${theme.colors.surface} ${item.progressPercent}%)`
+                  }}
+                >
+                  <img src={item.coverImageUrl || DEFAULT_COVER_PLACEHOLDER} alt={`${item.title} cover`} style={{ width: 40, height: 56, objectFit: "cover", borderRadius: 6 }} />
+                  <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+                    <strong style={{ color: theme.colors.textPrimary, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</strong>
+                    <small style={{ color: theme.colors.textSecondary, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.progressSummary}</small>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Edit ${item.title} progress`}
+                    onClick={() => { setMainView("profile"); setShowProfileSettings(false); }}
+                    style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, width: 30, height: 30, background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}
+                  >
+                    ⋯
+                  </button>
+                </article>
+              )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
+            </section>
+
+            <section style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: spacingTokens.sm, background: theme.colors.surface }}>
+              <div style={{ display: "grid", gap: spacingTokens.xs }}>
+                <h3 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 14 }}>Trending</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacingTokens.xs }}>
+                  <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 12 }}>
+                    Timeframe
+                    <select value={trendingTimeframe} onChange={(event) => setTrendingTimeframe(event.target.value as TrendingTimeframe)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: theme.colors.surface, color: theme.colors.textPrimary }}>
+                      <option value="24h">24 hours</option>
+                      <option value="7d">7 days</option>
+                      <option value="30d">30 days</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 12 }}>
+                    Type
+                    <select value={trendingTypeFilter} onChange={(event) => setTrendingTypeFilter(event.target.value as TrendingTypeFilter)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: theme.colors.surface, color: theme.colors.textPrimary }}>
+                      <option value="all">All</option>
+                      <option value="book">Books</option>
+                      <option value="tv_show">TV shows</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              {trendingStatus === "loading" ? <small style={{ color: theme.colors.textSecondary }}>Loading trending titles…</small> : null}
+              {trendingStatus === "error" ? <small style={{ color: "#b42318" }}>{trendingError ?? "Unable to load trending titles."}</small> : null}
+              {trendingStatus === "empty" ? <small style={{ color: theme.colors.textSecondary }}>No trending titles for this filter yet.</small> : null}
+
+              {trendingItems.map((item, index) => (
+                <article key={`trending-${item.catalogItemId}`} style={{ display: "grid", gridTemplateColumns: "20px 44px 1fr auto", alignItems: "center", gap: spacingTokens.xs, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.sm, padding: "8px 10px" }}>
+                  <strong style={{ color: theme.colors.textSecondary, fontSize: 12 }}>{index + 1}</strong>
+                  <img src={item.coverImageUrl || DEFAULT_COVER_PLACEHOLDER} alt={`${item.title} cover`} style={{ width: 38, height: 52, objectFit: "cover", borderRadius: 6 }} />
+                  <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+                    <strong style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</strong>
+                    <small style={{ color: theme.colors.textSecondary }}>{item.itemType === "tv_show" ? "TV show" : "Book"}</small>
+                  </div>
+                  <small style={{ color: theme.colors.textSecondary, fontWeight: 600 }}>{item.addCount}</small>
+                </article>
+              ))}
+            </section>
           </aside>
         </main>
       </div>
