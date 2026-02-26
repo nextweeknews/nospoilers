@@ -107,6 +107,9 @@ type Props = {
    * Required only if selectionBehavior === "import".
    */
   onImported?: (result: CatalogImportResponse, selected: CatalogSearchResult) => void;
+  onAddToShelf?: (result: CatalogImportResponse, selected: CatalogSearchResult) => void | Promise<void>;
+  onAddToGroup?: (result: CatalogImportResponse, selected: CatalogSearchResult, groupId: string) => void | Promise<void>;
+  availableGroups?: Array<{ id: string; name: string }>;
 
   onError?: (message: string) => void;
 
@@ -389,6 +392,9 @@ export const CatalogSearchSheet = ({
   selectionBehavior = "select_only",
   onSelected,
   onImported,
+  onAddToShelf,
+  onAddToGroup,
+  availableGroups = [],
   onError,
   searchEndpoint = DEFAULT_SEARCH_ENDPOINT,
   importEndpoint = DEFAULT_IMPORT_ENDPOINT,
@@ -412,6 +418,8 @@ export const CatalogSearchSheet = ({
   const [importingResultId, setImportingResultId] = useState<string>();
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [providerMeta, setProviderMeta] = useState<SearchResponse["providers"]>();
+  const [menuResultId, setMenuResultId] = useState<string>();
+  const [groupPickerResultId, setGroupPickerResultId] = useState<string>();
 
   const abortRef = useRef<AbortController | null>(null);
   const requestSeqRef = useRef(0);
@@ -441,6 +449,8 @@ export const CatalogSearchSheet = ({
       setHasMore(false);
       setImportingResultId(undefined);
       setProviderMeta(undefined);
+      setMenuResultId(undefined);
+      setGroupPickerResultId(undefined);
 
       if (abortRef.current) {
         abortRef.current.abort();
@@ -669,31 +679,22 @@ export const CatalogSearchSheet = ({
     setImportErrorMessage(undefined);
   };
 
-  const handlePrimaryAction = async () => {
-    if (!selectedResult) return;
-
-    if (selectionBehavior === "select_only") {
-      setImportErrorMessage(undefined);
-      onSelected?.(selectedResult);
-      return;
-    }
-
-    if (importingResultId) return;
-
+  const importCatalogItem = async (item: CatalogSearchResult) => {
+    if (importingResultId) return null;
     if (!onImported) {
       const message = "Catalog import handler is not configured.";
       setImportErrorMessage(message);
       onError?.(message);
-      return;
+      return null;
     }
 
     const payload: CatalogImportRequest = {
-      item_type: selectedResult.item_type,
-      metadata_source: selectedResult.metadata_source,
-      source_id: selectedResult.source_id,
+      item_type: item.item_type,
+      metadata_source: item.metadata_source,
+      source_id: item.source_id,
       source_hint: {
-        title: selectedResult.title,
-        release_year: selectedResult.release_year ?? null
+        title: item.title,
+        release_year: item.release_year ?? null
       },
       import_options: {
         fetch_progress_units: true,
@@ -707,7 +708,7 @@ export const CatalogSearchSheet = ({
             : { group_ids: groupId ? [groupId] : [] }
     };
 
-    setImportingResultId(selectedResult.result_id);
+    setImportingResultId(item.result_id);
     setImportErrorMessage(undefined);
 
     try {
@@ -718,14 +719,26 @@ export const CatalogSearchSheet = ({
       });
 
       const imported = await parseImportResponse(response);
-      onImported(imported, selectedResult);
+      onImported(imported, item);
+      return imported;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to import catalog item.";
       setImportErrorMessage(message);
       onError?.(message);
+      return null;
     } finally {
       setImportingResultId(undefined);
     }
+  };
+
+  const handlePrimaryAction = async () => {
+    if (!selectedResult) return;
+    if (selectionBehavior === "select_only") {
+      setImportErrorMessage(undefined);
+      onSelected?.(selectedResult);
+      return;
+    }
+    await importCatalogItem(selectedResult);
   };
 
   const handleLoadMore = async () => {
@@ -867,6 +880,50 @@ export const CatalogSearchSheet = ({
                               {progressChip ? <span style={tinyPillStyle(theme)}>{progressChip}</span> : null}
                             </div>
                           </div>
+
+                          <div style={{ marginLeft: "auto", position: "relative" }}>
+                            <button
+                              type="button"
+                              aria-label={`Add ${item.title}`}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setMenuResultId((current) => (current === item.result_id ? undefined : item.result_id));
+                                setGroupPickerResultId(undefined);
+                              }}
+                              style={plusButtonStyle(theme)}
+                            >
+                              +
+                            </button>
+
+                            {menuResultId === item.result_id ? (
+                              <div style={popoverStyle(theme)} onClick={(event) => event.stopPropagation()}>
+                                <button type="button" style={popoverItemStyle(theme)} onClick={async () => {
+                                  const imported = await importCatalogItem(item);
+                                  if (imported) {
+                                    await onAddToShelf?.(imported, item);
+                                    setMenuResultId(undefined);
+                                  }
+                                }}>Add to shelf</button>
+                                <button type="button" style={popoverItemStyle(theme)} onClick={() => setGroupPickerResultId(item.result_id)}>Add to group</button>
+                              </div>
+                            ) : null}
+
+                            {groupPickerResultId === item.result_id ? (
+                              <div style={popoverStyle(theme)} onClick={(event) => event.stopPropagation()}>
+                                {availableGroups.length ? availableGroups.map((group) => (
+                                  <button key={group.id} type="button" style={popoverItemStyle(theme)} onClick={async () => {
+                                    const imported = await importCatalogItem(item);
+                                    if (imported) {
+                                      await onAddToGroup?.(imported, item, group.id);
+                                      setGroupPickerResultId(undefined);
+                                      setMenuResultId(undefined);
+                                    }
+                                  }}>{group.name}</button>
+                                )) : <small style={{ color: theme.colors.textSecondary }}>No groups available</small>}
+                              </div>
+                            ) : null}
+                          </div>
                         </button>
                       </li>
                     );
@@ -889,31 +946,16 @@ export const CatalogSearchSheet = ({
             ) : null}
           </div>
 
-          <div style={detailPaneStyle(theme)}>
-            {selectedResult ? (
-              <SelectedResultPanel
-                theme={theme}
-                item={selectedResult}
-                mode={mode}
-                selectionBehavior={selectionBehavior}
-                isImporting={importingResultId === selectedResult.result_id}
-                onPrimaryAction={() => void handlePrimaryAction()}
-                errorMessage={effectiveDetailError}
-              />
-            ) : (
-              <EmptyState theme={theme} title="Select a result" subtitle="Choose an item to preview details and continue." />
-            )}
-
-            {providerMeta ? (
-              <div style={{ marginTop: "auto", paddingTop: 8 }}>
-                <small style={{ color: theme.colors.textSecondary }}>
-                  Providers: {(providerMeta.queried ?? []).join(", ") || "—"}
-                  {providerMeta.partial ? " • partial results" : ""}
-                  {(providerMeta.timeouts?.length ?? 0) > 0 ? ` • timeouts: ${providerMeta.timeouts?.join(", ")}` : ""}
-                </small>
-              </div>
-            ) : null}
-          </div>
+          {providerMeta ? (
+            <div style={{ padding: spacingTokens.md, borderTop: `1px solid ${theme.colors.border}` }}>
+              <small style={{ color: theme.colors.textSecondary }}>
+                Providers: {(providerMeta.queried ?? []).join(", ") || "—"}
+                {providerMeta.partial ? " • partial results" : ""}
+                {(providerMeta.timeouts?.length ?? 0) > 0 ? ` • timeouts: ${providerMeta.timeouts?.join(", ")}` : ""}
+              </small>
+              {effectiveDetailError ? <p style={{ margin: "8px 0 0", color: "#b42318", fontSize: 13 }}>{effectiveDetailError}</p> : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1118,17 +1160,51 @@ const inputStyle = (theme: Theme): CSSProperties => ({
 
 const contentGridStyle = (): CSSProperties => ({
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.2fr) minmax(280px, 0.8fr)",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: 0,
   minHeight: 0,
   overflow: "hidden"
 });
 
 const listPaneStyle = (theme: Theme): CSSProperties => ({
-  borderRight: `1px solid ${theme.colors.border}`,
   padding: spacingTokens.md,
   overflowY: "auto",
   minHeight: 0
+});
+
+const plusButtonStyle = (theme: Theme): CSSProperties => ({
+  borderRadius: 999,
+  border: `1px solid ${theme.colors.border}`,
+  width: 30,
+  height: 30,
+  background: theme.colors.surface,
+  color: theme.colors.textPrimary,
+  cursor: "pointer"
+});
+
+const popoverStyle = (theme: Theme): CSSProperties => ({
+  position: "absolute",
+  right: 0,
+  top: 34,
+  display: "grid",
+  gap: 4,
+  minWidth: 150,
+  background: theme.colors.surface,
+  border: `1px solid ${theme.colors.border}`,
+  borderRadius: radiusTokens.md,
+  padding: 6,
+  zIndex: 5,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
+});
+
+const popoverItemStyle = (theme: Theme): CSSProperties => ({
+  border: "none",
+  background: "transparent",
+  textAlign: "left",
+  color: theme.colors.textPrimary,
+  padding: "6px 8px",
+  borderRadius: 8,
+  cursor: "pointer"
 });
 
 const detailPaneStyle = (theme: Theme): CSSProperties => ({
