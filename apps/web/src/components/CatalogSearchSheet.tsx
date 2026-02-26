@@ -342,29 +342,6 @@ const extractPageCount = (metadata: Record<string, unknown> | undefined): number
   return null;
 };
 
-  const volumeInfo =
-    metadata.volumeInfo && typeof metadata.volumeInfo === "object"
-      ? (metadata.volumeInfo as Record<string, unknown>)
-      : undefined;
-
-  const candidates = [
-    metadata.page_count,
-    metadata.pageCount,
-    metadata.number_of_pages,
-    metadata.pages,
-    volumeInfo?.pageCount
-  ];
-
-  for (const candidate of candidates) {
-    const parsed = parseNumericPageCount(candidate);
-    if (parsed !== null) {
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
 const hasNonZeroBookPageCount = (item: CatalogSearchResult): boolean => {
   if (item.item_type !== "book") return true;
   const pageCount = extractPageCount(item.metadata);
