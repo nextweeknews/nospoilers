@@ -16,6 +16,7 @@ export type ShelfItem = {
   coverImageUrl?: string;
   status: string;
   addedAt: string;
+  updatedAt: string;
   completedAt?: string | null;
   progressSummary: string;
   progressPercent: number;
@@ -222,7 +223,7 @@ export const ProfileTabScreen = ({
             <div style={{ display: "grid", gap: 2 }}>
               <strong style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: 600 }}>{item.title}</strong>
               <small style={{ color: theme.colors.textSecondary, fontSize: 11 }}>
-                Added {formatRelativeTime(item.addedAt)} ago • {item.status === "completed" ? `Completed ${formatRelativeTime(item.completedAt || item.addedAt)} ago` : item.progressSummary}
+                Updated {formatRelativeTime(item.updatedAt)} ago • {item.status === "completed" ? `Completed ${formatRelativeTime(item.completedAt || item.addedAt)} ago` : item.progressSummary}
               </small>
             </div>
             <button
