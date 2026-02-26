@@ -492,20 +492,27 @@ export const CatalogSearchSheet = ({
 
   const canSearch = query.trim().length >= MIN_QUERY_LENGTH;
 
-  const getSearchRequestHeaders = (): Headers => {
+  const getSearchRequestHeaders = async (): Promise<Headers> => {
     const headers = mergeHeaders(
       { Accept: "application/json" },
       defaultHeaders,
       searchHeaders,
       apiKey ? { apikey: apiKey } : undefined
     );
-
-    // Helpful fallback if apiKey prop wasn't passed but env exists in Vite app
+  
+    // Ensure apikey exists
     if (!headers.has("apikey")) {
       const envApiKey = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_ANON_KEY;
       if (envApiKey) headers.set("apikey", envApiKey);
     }
-
+  
+    // Ensure Authorization exists (needed if edge function requires JWT)
+    if (!headers.has("authorization")) {
+      const { data } = await supabaseClient.auth.getSession();
+      const token = data.session?.access_token;
+      if (token) headers.set("authorization", `Bearer ${token}`);
+    }
+  
     return headers;
   };
 
@@ -582,7 +589,7 @@ export const CatalogSearchSheet = ({
     try {
       const response = await fetchImpl(`${searchEndpoint}?${params.toString()}`, {
         method: "GET",
-        headers: getSearchRequestHeaders(),
+        headers: await getSearchRequestHeaders(),
         signal: controller.signal
       });
 
