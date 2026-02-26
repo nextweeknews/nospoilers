@@ -214,6 +214,33 @@ export const App = () => {
   const FUNCTIONS_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_FUNCTIONS_URL ?? "";
     console.log("VITE_SUPABASE_FUNCTIONS_URL", import.meta.env.VITE_SUPABASE_FUNCTIONS_URL);
 
+  const syncTvMazeIfStale = async (catalogItemId: string) => {
+    if (!FUNCTIONS_URL) return;
+  
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!anon) return;
+  
+    try {
+      const { data } = await supabaseClient.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+  
+      // Fire-and-forget; the function will no-op unless ended=null and updated_at > 10 minutes old.
+      await fetch(`${FUNCTIONS_URL}/catalog-sync-tvmaze`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anon,
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ catalog_item_id: Number(catalogItemId) })
+      });
+    } catch (error) {
+      // Don't block UI on sync failures
+      console.warn("[app] tvmaze sync failed", error);
+    }
+  };
+
   const refreshCatalogItems = async () => {
     const { data, error } = await supabaseClient
       .from("catalog_items")
@@ -610,6 +637,15 @@ export const App = () => {
 
     void loadProgressUnitsForCatalogItem(selectedCatalogItemIdForProgress);
   }, [currentUser, selectedCatalogItemIdForProgress]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+  
+    // When a group catalog item is selected, opportunistically sync TV episodes if stale.
+    if (selectedGroupCatalogItemId) {
+      void syncTvMazeIfStale(selectedGroupCatalogItemId);
+    }
+  }, [currentUser, selectedGroupCatalogItemId]);
 
   const onSignedIn = (result: ProviderLoginResult) => {
     if (result.user.preferences?.themePreference) {
