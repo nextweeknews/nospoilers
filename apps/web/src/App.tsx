@@ -543,16 +543,11 @@ export const App = () => {
           const progressPercent = itemType === "book"
             ? Math.max(0, Math.min(100, Math.round(progressPercentValue ?? (currentPage && pageCount ? (currentPage / pageCount) * 100 : 0))))
             : (() => {
-                if (!tvUnits.length) return 0;
-                const seasons = [...new Set(tvUnits.map((unit) => unit.season_number).filter((v) => v > 0))].sort((a, b) => a - b);
-                if (!seasons.length || !currentSeason || currentSeason < 1) return 0;
-                const seasonIndex = Math.max(0, seasons.findIndex((season) => season === currentSeason));
-                const seasonBase = seasonIndex / seasons.length;
-                const episodesInSeason = tvUnits.filter((unit) => unit.season_number === currentSeason);
-                const episodeFraction = episodesInSeason.length
-                  ? Math.min(1, Math.max(0, (currentEpisode ?? 0) / episodesInSeason.length)) / seasons.length
-                  : 0;
-                return Math.max(0, Math.min(100, Math.round((seasonBase + episodeFraction) * 100)));
+                if (!tvUnits.length || !currentSeason || !currentEpisode) return 0;
+                const checkedEpisodes = tvUnits.filter((unit) => (
+                  unit.season_number < currentSeason || (unit.season_number === currentSeason && unit.episode_number <= currentEpisode)
+                )).length;
+                return Math.max(0, Math.min(100, Math.round((checkedEpisodes / tvUnits.length) * 100)));
               })();
 
           const progressSummary = itemType === "book"
@@ -1112,7 +1107,15 @@ export const App = () => {
                         : `Season ${currentSeasonNumber ?? item.currentSeasonNumber ?? 1}, Episode ${currentEpisodeNumber ?? item.currentEpisodeNumber ?? 1}`;
                       const nextProgressPercent = item.itemType === "book"
                         ? Math.max(0, Math.min(100, Math.round(progressPercent ?? (currentPage && item.pageCount ? (currentPage / item.pageCount) * 100 : item.progressPercent))))
-                        : item.progressPercent;
+                        : (() => {
+                            const season = currentSeasonNumber ?? item.currentSeasonNumber;
+                            const episode = currentEpisodeNumber ?? item.currentEpisodeNumber;
+                            if (!season || !episode || !item.tvProgressUnits.length) return 0;
+                            const checkedEpisodes = item.tvProgressUnits.filter((unit) => (
+                              unit.seasonNumber < season || (unit.seasonNumber === season && unit.episodeNumber <= episode)
+                            )).length;
+                            return Math.max(0, Math.min(100, Math.round((checkedEpisodes / item.tvProgressUnits.length) * 100)));
+                          })();
                       return {
                         ...item,
                         status,
