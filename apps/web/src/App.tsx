@@ -785,6 +785,20 @@ export const App = () => {
     window.sessionStorage.setItem(MAIN_VIEW_KEY, mainView);
   }, [mainView]);
 
+  useEffect(() => {
+    if (mainView !== "groups") {
+      return;
+    }
+
+    if (selectedGroupId) {
+      return;
+    }
+
+    setMainView("for-you");
+    setSelectedShelfCatalogItemId(null);
+    setSelectedGroupCatalogItemId(null);
+  }, [mainView, selectedGroupId]);
+
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
   const selectedGroupCatalogItems = selectedGroupId
     ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
