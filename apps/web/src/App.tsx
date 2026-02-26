@@ -49,6 +49,8 @@ type PostEntity = SupabasePostRow & {
   authorAvatarUrl?: string;
   catalogItemTitle?: string;
   progressLine?: string;
+  reactionCount: number;
+  viewerHasReacted: boolean;
   catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
 };
 
@@ -152,6 +154,18 @@ const formatPostProgressLine = (post: SupabasePostRow & {
   return `S${unit.season_number}, E${unit.episode_number}${episodeTitle ? ` - ${episodeTitle}` : ""}`;
 };
 
+const mapPostWithReactionState = (
+  post: SupabasePostRow,
+  reactedPostIds: Set<string>,
+  reactionCountsByPostId: Map<string, number>
+): Pick<PostEntity, "reactionCount" | "viewerHasReacted"> => {
+  const postId = String(post.id);
+  return {
+    reactionCount: reactionCountsByPostId.get(postId) ?? 0,
+    viewerHasReacted: reactedPostIds.has(postId)
+  };
+};
+
 const hasReachedPostProgress = (post: PostEntity, shelfItem: ShelfItem): boolean => {
   if (shelfItem.status === "completed") return true;
 
@@ -252,6 +266,8 @@ export const App = () => {
   });
   const [groups, setGroups] = useState<GroupEntity[]>([]);
   const [posts, setPosts] = useState<PostEntity[]>([]);
+  const [reactedPostIds, setReactedPostIds] = useState<Set<string>>(new Set());
+  const [reactionCountsByPostId, setReactionCountsByPostId] = useState<Map<string, number>>(new Map());
   const [groupStatus, setGroupStatus] = useState<LoadStatus>("loading");
   const [feedStatus, setFeedStatus] = useState<LoadStatus>("loading");
   const [groupError, setGroupError] = useState<string>();
@@ -492,6 +508,8 @@ export const App = () => {
       setGroups([]);
       setPosts([]);
       setGroupPosts([]);
+      setReactedPostIds(new Set());
+      setReactionCountsByPostId(new Map());
       setGroupStatus("loading");
       setFeedStatus("loading");
       setGroupError(undefined);
@@ -573,7 +591,8 @@ export const App = () => {
                   book_page?: number | null;
                   book_percent?: number | null;
                   catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
-                })
+                }),
+                ...mapPostWithReactionState(post, reactedPostIds, reactionCountsByPostId)
               }))
             );
           }
@@ -706,6 +725,29 @@ export const App = () => {
         setGroupCatalogItems([]);
       }
 
+      const [viewerReactionsResult, reactionCountsResult] = await Promise.all([
+        supabaseClient
+          .from("post_reactions")
+          .select("post_id")
+          .eq("user_id", currentUser.id)
+          .eq("emoji", "heart"),
+        supabaseClient
+          .from("post_reaction_counts")
+          .select("post_id,reaction_count")
+      ]);
+
+      const nextReactedPostIds = new Set<string>(
+        (((viewerReactionsResult.data as Array<{ post_id: string | number }> | null) ?? []).map((row) => String(row.post_id)))
+      );
+      const nextReactionCountsByPostId = new Map<string, number>(
+        (((reactionCountsResult.data as Array<{ post_id: string | number; reaction_count: number | null }> | null) ?? []).map((row) => [
+          String(row.post_id),
+          Math.max(0, Number(row.reaction_count ?? 0))
+        ]))
+      );
+      setReactedPostIds(nextReactedPostIds);
+      setReactionCountsByPostId(nextReactionCountsByPostId);
+
       const postResult = await supabaseClient
         .from("posts")
         .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
@@ -736,7 +778,8 @@ export const App = () => {
             book_page?: number | null;
             book_percent?: number | null;
             catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
-          })
+          }),
+          ...mapPostWithReactionState(post, nextReactedPostIds, nextReactionCountsByPostId)
         }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
@@ -999,6 +1042,77 @@ export const App = () => {
   const createPostTriggerText = `Create a post${createPostContextGroupName ? ` in ${createPostContextGroupName}` : ""}${createPostContextTitle ? ` about ${createPostContextTitle}` : ""}`;
   const defaultCreatePostGroupId = mainView === "groups" && selectedGroupId ? selectedGroupId : undefined;
   const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
+
+  const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
+    if (!currentUser) {
+      return;
+    }
+
+    const hasReacted = reactedPostIds.has(postId);
+    if (source === "double_click" && hasReacted) {
+      return;
+    }
+
+    const willReact = source === "double_click" ? true : !hasReacted;
+
+    const previousReactedPostIds = reactedPostIds;
+    const previousReactionCountsByPostId = reactionCountsByPostId;
+
+    const nextReactedPostIds = new Set(reactedPostIds);
+    const nextReactionCountsByPostId = new Map(reactionCountsByPostId);
+    const currentCount = nextReactionCountsByPostId.get(postId) ?? 0;
+
+    if (willReact) {
+      nextReactedPostIds.add(postId);
+      nextReactionCountsByPostId.set(postId, currentCount + (hasReacted ? 0 : 1));
+    } else {
+      nextReactedPostIds.delete(postId);
+      nextReactionCountsByPostId.set(postId, Math.max(0, currentCount - (hasReacted ? 1 : 0)));
+    }
+
+    setReactedPostIds(nextReactedPostIds);
+    setReactionCountsByPostId(nextReactionCountsByPostId);
+    setPosts((previous) =>
+      previous.map((post) =>
+        String(post.id) === postId
+          ? {
+              ...post,
+              viewerHasReacted: willReact,
+              reactionCount: nextReactionCountsByPostId.get(postId) ?? 0
+            }
+          : post
+      )
+    );
+
+    const request = willReact
+      ? supabaseClient
+          .from("post_reactions")
+          .upsert({ post_id: Number(postId), user_id: currentUser.id, emoji: "heart" }, { onConflict: "post_id,user_id" })
+      : supabaseClient
+          .from("post_reactions")
+          .delete()
+          .eq("post_id", Number(postId))
+          .eq("user_id", currentUser.id);
+
+    const { error } = await request;
+
+    if (error) {
+      console.error("[app] failed to toggle reaction", error);
+      setReactedPostIds(previousReactedPostIds);
+      setReactionCountsByPostId(previousReactionCountsByPostId);
+      setPosts((previous) =>
+        previous.map((post) =>
+          String(post.id) === postId
+            ? {
+                ...post,
+                viewerHasReacted: previousReactedPostIds.has(postId),
+                reactionCount: previousReactionCountsByPostId.get(postId) ?? 0
+              }
+            : post
+        )
+      );
+    }
+  };
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
@@ -1440,7 +1554,7 @@ export const App = () => {
               )
             ) : null}
 
-            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} /> : null}
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} onToggleReaction={onTogglePostReaction} /> : null}
 
             {mainView === "groups" ? (
               selectedGroup ? (
@@ -1543,7 +1657,9 @@ export const App = () => {
                       authorDisplayName: currentUser.displayName?.trim() || currentUser.username || "You",
                       authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER,
                       catalogItemTitle: shelfItems.find((item) => item.catalogItemId === String((inserted as SupabasePostRow).catalog_item_id))?.title,
-                      progressLine: formatPostProgressLine(inserted as SupabasePostRow)
+                      progressLine: formatPostProgressLine(inserted as SupabasePostRow),
+                      reactionCount: 0,
+                      viewerHasReacted: false
                     };
 
                     if ((inserted as { group_id?: string | number | null }).group_id == null) {
