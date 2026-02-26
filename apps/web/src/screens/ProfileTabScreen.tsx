@@ -69,6 +69,7 @@ export const ProfileTabScreen = ({
     progressPercent?: number | null;
     currentSeasonNumber?: number | null;
     currentEpisodeNumber?: number | null;
+    watchedEpisodeCount?: number | null;
   }) => Promise<void>;
 }) => {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -98,14 +99,13 @@ export const ProfileTabScreen = ({
     }
 
     const initialSelected: Record<string, boolean> = {};
-    item.tvProgressUnits.forEach((unit) => {
-      if (
-        (item.currentSeasonNumber ?? 0) > unit.seasonNumber ||
-        ((item.currentSeasonNumber ?? 0) === unit.seasonNumber && (item.currentEpisodeNumber ?? 0) >= unit.episodeNumber)
-      ) {
+    const savedCheckedCount = Math.max(0, Math.round(((item.progressPercentValue ?? 0) / 100) * item.tvProgressUnits.length));
+    if (savedCheckedCount > 0) {
+      const sortedUnits = [...item.tvProgressUnits].sort((a, b) => (a.seasonNumber - b.seasonNumber) || (a.episodeNumber - b.episodeNumber));
+      sortedUnits.slice(0, savedCheckedCount).forEach((unit) => {
         initialSelected[unit.id] = true;
-      }
-    });
+      });
+    }
     setSelectedEpisodes(initialSelected);
   };
 
@@ -163,13 +163,18 @@ export const ProfileTabScreen = ({
     const sorted = [...selectedUnits].sort((a, b) => (a.seasonNumber - b.seasonNumber) || (a.episodeNumber - b.episodeNumber));
     const last = sorted[sorted.length - 1];
     const completed = selectedUnits.length === editingItem.tvProgressUnits.length;
+    const progressPercent = editingItem.tvProgressUnits.length
+      ? Math.round((selectedUnits.length / editingItem.tvProgressUnits.length) * 100)
+      : 0;
     setSaving(true);
     try {
       await onSaveShelfProgress({
         catalogItemId: editingItem.catalogItemId,
         status: completed ? "completed" : "in_progress",
         currentSeasonNumber: last.seasonNumber,
-        currentEpisodeNumber: last.episodeNumber
+        currentEpisodeNumber: last.episodeNumber,
+        watchedEpisodeCount: selectedUnits.length,
+        progressPercent
       });
       closeEditor();
     } finally {
