@@ -55,6 +55,7 @@ type GroupCatalogItem = {
   groupId: string;
   catalogItemId: string;
   title: string;
+  coverImageUrl?: string;
 };
 
 type CatalogSearchContext =
@@ -78,6 +79,14 @@ const getSystemMode = (): ThemeMode => {
 const DEFAULT_AVATAR_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" fill="none"><rect width="80" height="80" rx="40" fill="#27364A"/><circle cx="40" cy="31" r="14" fill="#7E97B3"/><path d="M16 69C16 55.745 26.745 45 40 45C53.255 45 64 55.745 64 69V80H16V69Z" fill="#7E97B3"/></svg>`
 )}`;
+
+const DEFAULT_COVER_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="96" viewBox="0 0 72 96"><rect width="72" height="96" rx="8" fill="#334155"/><path d="M20 20h32v56H20z" fill="#475569"/><path d="M24 28h24M24 36h20M24 44h24" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/></svg>`
+)}`;
+
+const HOME_ICON = "⌂";
+const FOR_YOU_ICON = "✦";
+const GROUP_FALLBACK_ICON = "👥";
 
 const formatAuthorDisplayName = (author: { display_name?: string | null; username?: string | null } | null): string => {
   const displayName = author?.display_name?.trim();
@@ -195,6 +204,7 @@ export const App = () => {
   const [groupCatalogItems, setGroupCatalogItems] = useState<GroupCatalogItem[]>([]);
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
+  const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -588,7 +598,7 @@ export const App = () => {
       if (activeGroupIds.length) {
         const groupCatalogResult = await supabaseClient
           .from("group_catalog_items")
-          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title)")
+          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title,cover_image_url)")
           .in("group_id", activeGroupIds)
           .eq("is_active", true)
           .order("added_at", { ascending: false });
@@ -598,10 +608,11 @@ export const App = () => {
           setGroupCatalogItems([]);
         } else {
           setGroupCatalogItems(
-            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null } | null }> | null) ?? [])).map((row) => ({
+            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null; cover_image_url?: string | null } | null }> | null) ?? [])).map((row) => ({
               groupId: String(row.group_id),
               catalogItemId: String(row.catalog_item_id),
-              title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`
+              title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+              coverImageUrl: row.catalog_items?.cover_image_url ?? undefined
             }))
           );
         }
@@ -1025,7 +1036,7 @@ export const App = () => {
         <main
           style={{
             display: "grid",
-            gridTemplateColumns: "220px 220px minmax(420px, 760px) 220px",
+            gridTemplateColumns: "270px 270px minmax(420px, 760px) 220px",
             justifyContent: "center",
             minHeight: 0,
             background: theme.colors.background
@@ -1035,9 +1046,11 @@ export const App = () => {
             <button
               type="button"
               onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setSelectedShelfCatalogItemId(null); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
-              style={listItemStyle(theme, mainView === "for-you")}
+              onMouseEnter={() => setHoveredSidebarItemKey("nav-for-you")}
+              onMouseLeave={() => setHoveredSidebarItemKey((current) => current === "nav-for-you" ? null : current)}
+              style={listItemStyle(theme, mainView === "for-you", hoveredSidebarItemKey === "nav-for-you")}
             >
-              For you
+              <SidebarItemContent label="For you" iconText={FOR_YOU_ICON} theme={theme} />
             </button>
             <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 14px" }}>Your groups</strong>
             {groups.map((group) => {
@@ -1047,9 +1060,16 @@ export const App = () => {
                   key={group.id}
                   type="button"
                   onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
-                  style={listItemStyle(theme, active)}
+                  onMouseEnter={() => setHoveredSidebarItemKey(`group-${group.id}`)}
+                  onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-${group.id}` ? null : current)}
+                  style={listItemStyle(theme, active, hoveredSidebarItemKey === `group-${group.id}`)}
                 >
-                  {group.name}
+                  <SidebarItemContent
+                    label={group.name}
+                    avatarUrl={mapAvatarPathToUiValue(group.avatar_path) ?? undefined}
+                    fallbackIcon={GROUP_FALLBACK_ICON}
+                    theme={theme}
+                  />
                 </button>
               );
             })}
@@ -1068,18 +1088,22 @@ export const App = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedShelfCatalogItemId(null)}
-                  style={listItemStyle(theme, selectedShelfCatalogItemId == null)}
+                  onMouseEnter={() => setHoveredSidebarItemKey("shelf-home")}
+                  onMouseLeave={() => setHoveredSidebarItemKey((current) => current === "shelf-home" ? null : current)}
+                  style={listItemStyle(theme, selectedShelfCatalogItemId == null, hoveredSidebarItemKey === "shelf-home")}
                 >
-                  Home
+                  <SidebarItemContent label="Home" iconText={HOME_ICON} theme={theme} />
                 </button>
                 {shelfItems.map((item) => (
                   <button
                     key={item.catalogItemId}
                     type="button"
                     onClick={() => setSelectedShelfCatalogItemId(item.catalogItemId)}
-                    style={listItemStyle(theme, selectedShelfCatalogItemId === item.catalogItemId)}
+                    onMouseEnter={() => setHoveredSidebarItemKey(`shelf-${item.catalogItemId}`)}
+                    onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `shelf-${item.catalogItemId}` ? null : current)}
+                    style={listItemStyle(theme, selectedShelfCatalogItemId === item.catalogItemId, hoveredSidebarItemKey === `shelf-${item.catalogItemId}`)}
                   >
-                    {item.title}
+                    <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
                   </button>
                 ))}
               </>
@@ -1090,18 +1114,22 @@ export const App = () => {
                 <button
                   type="button"
                   onClick={() => setSelectedGroupCatalogItemId(null)}
-                  style={listItemStyle(theme, selectedGroupCatalogItemId == null)}
+                  onMouseEnter={() => setHoveredSidebarItemKey("group-home")}
+                  onMouseLeave={() => setHoveredSidebarItemKey((current) => current === "group-home" ? null : current)}
+                  style={listItemStyle(theme, selectedGroupCatalogItemId == null, hoveredSidebarItemKey === "group-home")}
                 >
-                  Home
+                  <SidebarItemContent label="Home" iconText={HOME_ICON} theme={theme} />
                 </button>
                 {selectedGroupCatalogItems.map((item) => (
                   <button
                     key={`${item.groupId}-${item.catalogItemId}`}
                     type="button"
                     onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
-                    style={listItemStyle(theme, selectedGroupCatalogItemId === item.catalogItemId)}
+                    onMouseEnter={() => setHoveredSidebarItemKey(`group-catalog-${item.groupId}-${item.catalogItemId}`)}
+                    onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-catalog-${item.groupId}-${item.catalogItemId}` ? null : current)}
+                    style={listItemStyle(theme, selectedGroupCatalogItemId === item.catalogItemId, hoveredSidebarItemKey === `group-catalog-${item.groupId}-${item.catalogItemId}`)}
                   >
-                    {item.title}
+                    <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
                   </button>
                 ))}
               </>
@@ -1514,11 +1542,53 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   cursor: "pointer"
 });
 
-const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean): CSSProperties => ({
+const SidebarItemContent = ({
+  label,
+  theme,
+  iconText,
+  avatarUrl,
+  artworkUrl,
+  fallbackIcon
+}: {
+  label: string;
+  theme: ReturnType<typeof createTheme>;
+  iconText?: string;
+  avatarUrl?: string;
+  artworkUrl?: string;
+  fallbackIcon?: string;
+}) => {
+  const imageSrc = avatarUrl || artworkUrl;
+  const fallbackText = iconText || fallbackIcon;
+
+  return (
+    <span style={{ display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)", alignItems: "center", columnGap: spacingTokens.sm }}>
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt=""
+          style={{ width: 24, height: 24, borderRadius: avatarUrl ? 999 : 6, objectFit: "cover", border: `1px solid ${theme.colors.border}`, background: theme.colors.surfaceMuted }}
+        />
+      ) : fallbackText ? (
+        <span style={{ width: 24, height: 24, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: `${theme.colors.textSecondary}22`, color: theme.colors.textSecondary, fontSize: 14, lineHeight: 1 }}>
+          {fallbackText}
+        </span>
+      ) : (
+        <img src={DEFAULT_COVER_PLACEHOLDER} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: "cover", border: `1px solid ${theme.colors.border}` }} />
+      )}
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+    </span>
+  );
+};
+
+const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, hovered = false): CSSProperties => ({
   ...menuItem(theme),
-  padding: "10px 14px",
-  background: active ? `${theme.colors.accent}14` : "transparent",
-  color: active ? theme.colors.accent : theme.colors.textPrimary
+  padding: "11px 14px",
+  fontSize: 16,
+  fontWeight: 500,
+  borderRadius: radiusTokens.sm,
+  background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : "transparent",
+  color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
+  transition: "background-color 120ms ease, color 120ms ease"
 });
 
 // Kept in case you use it again shortly.
