@@ -511,6 +511,7 @@ export const CatalogSearchSheet = ({
       const { data } = await supabaseClient.auth.getSession();
       const token = data.session?.access_token;
       if (token) headers.set("authorization", `Bearer ${token}`);
+      console.log("[catalog-search] token present?", Boolean(token), token?.slice(0, 16));
     }
   
     return headers;
