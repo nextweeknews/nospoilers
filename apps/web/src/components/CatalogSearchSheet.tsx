@@ -420,6 +420,7 @@ export const CatalogSearchSheet = ({
   const [providerMeta, setProviderMeta] = useState<SearchResponse["providers"]>();
   const [menuResultId, setMenuResultId] = useState<string>();
   const [groupPickerResultId, setGroupPickerResultId] = useState<string>();
+  const [hoveredResultId, setHoveredResultId] = useState<string>();
 
   const abortRef = useRef<AbortController | null>(null);
   const requestSeqRef = useRef(0);
@@ -451,6 +452,7 @@ export const CatalogSearchSheet = ({
       setProviderMeta(undefined);
       setMenuResultId(undefined);
       setGroupPickerResultId(undefined);
+      setHoveredResultId(undefined);
 
       if (abortRef.current) {
         abortRef.current.abort();
@@ -844,6 +846,8 @@ export const CatalogSearchSheet = ({
                       <li key={item.result_id}>
                         <button
                           type="button"
+                          onMouseEnter={() => setHoveredResultId(item.result_id)}
+                          onMouseLeave={() => setHoveredResultId((current) => (current === item.result_id ? undefined : current))}
                           onClick={() => {
                             setSelectedId(item.result_id);
                             setImportErrorMessage(undefined);
@@ -881,20 +885,22 @@ export const CatalogSearchSheet = ({
                             </div>
                           </div>
 
-                          <div style={{ marginLeft: "auto", position: "relative" }}>
-                            <button
-                              type="button"
-                              aria-label={`Add ${item.title}`}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                setMenuResultId((current) => (current === item.result_id ? undefined : item.result_id));
-                                setGroupPickerResultId(undefined);
-                              }}
-                              style={plusButtonStyle(theme)}
-                            >
-                              +
-                            </button>
+                          <div style={{ marginLeft: "auto", position: "relative", paddingLeft: 8 }}>
+                            {hoveredResultId === item.result_id || menuResultId === item.result_id || groupPickerResultId === item.result_id ? (
+                              <button
+                                type="button"
+                                aria-label={`Add ${item.title}`}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setMenuResultId((current) => (current === item.result_id ? undefined : item.result_id));
+                                  setGroupPickerResultId(undefined);
+                                }}
+                                style={plusButtonStyle(theme)}
+                              >
+                                +
+                              </button>
+                            ) : null}
 
                             {menuResultId === item.result_id ? (
                               <div style={popoverStyle(theme)} onClick={(event) => event.stopPropagation()}>
@@ -1177,6 +1183,8 @@ const plusButtonStyle = (theme: Theme): CSSProperties => ({
   border: `1px solid ${theme.colors.border}`,
   width: 30,
   height: 30,
+  display: "grid",
+  placeItems: "center",
   background: theme.colors.surface,
   color: theme.colors.textPrimary,
   cursor: "pointer"
@@ -1185,7 +1193,7 @@ const plusButtonStyle = (theme: Theme): CSSProperties => ({
 const popoverStyle = (theme: Theme): CSSProperties => ({
   position: "absolute",
   right: 0,
-  top: 34,
+  top: "calc(100% + 6px)",
   display: "grid",
   gap: 4,
   minWidth: 150,
@@ -1231,10 +1239,11 @@ const resultRowButtonStyle = (theme: Theme, selected: boolean): CSSProperties =>
   background: selected ? `${theme.colors.accent}12` : theme.colors.surface,
   padding: 8,
   display: "grid",
-  gridTemplateColumns: "52px 1fr",
+  gridTemplateColumns: "52px minmax(0,1fr) auto",
   gap: 10,
-  alignItems: "start",
-  cursor: "pointer"
+  alignItems: "center",
+  cursor: "pointer",
+  overflow: "visible"
 });
 
 const coverWrapperStyle = (theme: Theme): CSSProperties => ({

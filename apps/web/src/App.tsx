@@ -1056,7 +1056,7 @@ export const App = () => {
                 <>
                   <GroupScreen
                     groups={groups.map((group) => ({
-                      id: group.id,
+                      id: String(group.id),
                       name: group.name,
                       description: group.description,
                       coverUrl: mapAvatarPathToUiValue(group.avatar_path)
@@ -1097,7 +1097,7 @@ export const App = () => {
       <PostComposerSheet
         open={showCreatePostSheet}
         theme={theme}
-        groups={groups.map((group) => ({ id: group.id, label: group.name }))}
+        groups={groups.map((group) => ({ id: String(group.id), label: group.name }))}
         catalogItems={(() => {
           const base = catalogItems.map((entry) => ({ id: entry.id, label: entry.title }));
           if (!pendingPostCatalogSelection) return base;
