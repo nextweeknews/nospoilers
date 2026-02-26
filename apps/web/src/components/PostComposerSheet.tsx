@@ -35,6 +35,7 @@ type PostComposerSheetProps = {
 };
 
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+const composerCornerRadius = 18;
 
 const pillControlStyle = (theme: AppTheme): CSSProperties => ({
   border: `1px solid ${theme.colors.border}`,
@@ -134,7 +135,7 @@ export const PostComposerSheet = ({
     <>
       <style>{`
         @keyframes composerExpandUp {
-          from { transform: scaleY(0.23); opacity: 0.76; border-radius: ${radiusTokens.pill}px; }
+          from { transform: scaleY(0.23); opacity: 0.76; border-radius: ${composerCornerRadius}px; }
           to { transform: scaleY(1); opacity: 1; }
         }
         @keyframes composerContentIn {
@@ -147,9 +148,7 @@ export const PostComposerSheet = ({
           marginInline: "auto",
           width: "min(720px, calc(100% - 24px))",
           border: `1px solid ${theme.colors.border}`,
-          borderRadius: open ? radiusTokens.lg : radiusTokens.pill,
-          borderTopLeftRadius: radiusTokens.pill,
-          borderTopRightRadius: radiusTokens.pill,
+          borderRadius: composerCornerRadius,
           background: `linear-gradient(180deg, ${theme.colors.surface} 0%, ${theme.colors.surfaceMuted} 100%)`,
           boxShadow: open ? "0 12px 28px rgba(0,0,0,0.16)" : "0 2px 10px rgba(0,0,0,0.08)",
           transition: "border-radius 180ms ease, box-shadow 180ms ease, border-color 180ms ease",
@@ -177,11 +176,38 @@ export const PostComposerSheet = ({
                   borderRadius: 18,
                   background: theme.colors.surface,
                   color: theme.colors.textPrimary,
+                  fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                  fontSize: 15,
+                  lineHeight: 1.45,
                   resize: "vertical",
                   outline: "none",
                   padding: "12px 14px"
                 }}
               />
+
+              <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
+                <label style={{ ...pillControlStyle(theme), display: "inline-flex", alignItems: "center", cursor: "pointer", padding: "10px 14px" }}>
+                  <input
+                    type="file"
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      const tooLarge = files.find((file) => file.size > MAX_MEDIA_BYTES);
+                      if (tooLarge) {
+                        setError(`\"${tooLarge.name}\" exceeds the 10MB limit.`);
+                        return;
+                      }
+                      setAttachments(files.map((file) => ({ url: file.name, bytes: file.size, kind: file.type.startsWith("video") ? "video" : "image" })));
+                      setError(undefined);
+                    }}
+                  />
+                  Attach
+                </label>
+                <button type="button" onClick={() => setShowGifSearch(true)} style={{ ...pillControlStyle(theme), cursor: "pointer", padding: "10px 14px" }}>
+                  Add a gif
+                </button>
+              </div>
 
               {attachments.length ? (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: spacingTokens.xs }}>
@@ -204,78 +230,92 @@ export const PostComposerSheet = ({
               ) : null}
 
               <div style={{ display: "flex", gap: spacingTokens.sm, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
-                  <label style={{ color: theme.colors.textSecondary, whiteSpace: "nowrap" }}>
-                    Group
-                  </label>
-                  <select value={groupId} onChange={(event) => setGroupId(event.target.value)} style={pillControlStyle(theme)}>
-                    <option value="">Public</option>
-                    {groups.map((group) => <option key={group.id} value={group.id}>{group.label}</option>)}
-                  </select>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flex: "1 1 320px", minWidth: 220 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flex: "2 1 360px", minWidth: 240 }}>
                   <label style={{ color: theme.colors.textSecondary, whiteSpace: "nowrap" }}>
                     Title *
                   </label>
-                  <select value={catalogItemId} onChange={(event) => { setCatalogItemId(event.target.value); setSelectedSeason(""); setProgressUnitId(""); setBookProgressInput(""); }} style={pillControlStyle(theme)}>
+                  <select value={catalogItemId} onChange={(event) => { setCatalogItemId(event.target.value); setSelectedSeason(""); setProgressUnitId(""); setBookProgressInput(""); }} style={{ ...pillControlStyle(theme), flex: 1 }}>
                     <option value="">Select a title</option>
                     {catalogItems.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "end", gap: spacingTokens.xs }}>
-                  <label style={{ ...pillControlStyle(theme), display: "inline-flex", alignItems: "center", cursor: "pointer", padding: "10px 14px" }}>
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: "none" }}
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files ?? []);
-                        const tooLarge = files.find((file) => file.size > MAX_MEDIA_BYTES);
-                        if (tooLarge) {
-                          setError(`\"${tooLarge.name}\" exceeds the 10MB limit.`);
-                          return;
-                        }
-                        setAttachments(files.map((file) => ({ url: file.name, bytes: file.size, kind: file.type.startsWith("video") ? "video" : "image" })));
-                        setError(undefined);
-                      }}
-                    />
-                    Attach
-                  </label>
-                  <button type="button" onClick={() => setShowGifSearch(true)} style={{ ...pillControlStyle(theme), cursor: "pointer", padding: "10px 14px" }}>
-                    Add a gif
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
-                <div style={{ display: "flex", gap: spacingTokens.sm, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: spacingTokens.xs, flex: "1 1 220px", minWidth: 220 }}>
                   {selectedCatalog?.itemType === "tv_show" ? (
                     <>
-                      <select value={selectedSeason} onChange={(event) => { setSelectedSeason(event.target.value); setProgressUnitId(""); }} style={{ ...pillControlStyle(theme), flex: "1 1 130px" }}>
-                        <option value="">Season</option>
-                        {groupedSeasons.map(([season]) => <option key={season} value={String(season)}>Season {season}</option>)}
+                      <select value={selectedSeason} onChange={(event) => { setSelectedSeason(event.target.value); setProgressUnitId(""); }} style={{ ...pillControlStyle(theme), flex: "1 1 100px" }}>
+                        <option value="">S[n]</option>
+                        {groupedSeasons.map(([season]) => <option key={season} value={String(season)}>{`Season ${season}`}</option>)}
                       </select>
-                      <select value={progressUnitId} onChange={(event) => setProgressUnitId(event.target.value)} disabled={!selectedSeason} style={{ ...pillControlStyle(theme), opacity: selectedSeason ? 1 : 0.65, flex: "1 1 220px", minWidth: 160 }}>
-                        <option value="">Episode *</option>
+                      <select value={progressUnitId} onChange={(event) => setProgressUnitId(event.target.value)} disabled={!selectedSeason} style={{ ...pillControlStyle(theme), opacity: selectedSeason ? 1 : 0.65, flex: "1 1 120px", minWidth: 120 }}>
+                        <option value="">E[n]</option>
                         {seasonEpisodes.map((episode) => (
-                          <option key={episode.id} value={episode.id}>{`E${episode.episodeNumber} ${episode.title ?? ""}`.trim()}</option>
+                          <option key={episode.id} value={episode.id}>{`E${episode.episodeNumber} - ${episode.title ?? "Untitled"}`.trim()}</option>
                         ))}
                       </select>
                     </>
                   ) : (
                     <>
-                      <input value={bookProgressInput} onChange={(event) => setBookProgressInput(event.target.value)} placeholder={bookMode === "page" ? "Page *" : "Percent *"} style={{ ...pillControlStyle(theme), flex: "1 1 180px", minWidth: 130 }} />
-                      <button type="button" onClick={() => setBookMode((prev) => prev === "page" ? "percent" : "page")} style={{ ...pillControlStyle(theme), cursor: "pointer", padding: "9px 12px" }}>
-                        {bookMode === "page" ? "Page #" : "%"}
-                      </button>
+                      <input value={bookProgressInput} onChange={(event) => setBookProgressInput(event.target.value)} placeholder={bookMode === "page" ? "Page #" : "%"} style={{ ...pillControlStyle(theme), flex: "1 1 100px", minWidth: 110 }} />
+                      <div style={{ ...pillControlStyle(theme), padding: 3, display: "inline-flex", gap: 3, background: theme.colors.surface }}>
+                        <button
+                          type="button"
+                          onClick={() => setBookMode("page")}
+                          style={{
+                            border: "none",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            cursor: "pointer",
+                            background: bookMode === "page" ? theme.colors.accent : "transparent",
+                            color: bookMode === "page" ? theme.colors.accentText : theme.colors.textSecondary,
+                            transition: "background-color 120ms ease, color 120ms ease"
+                          }}
+                          onMouseEnter={(event) => {
+                            if (bookMode !== "page") event.currentTarget.style.background = `${theme.colors.surfaceMuted}`;
+                          }}
+                          onMouseLeave={(event) => {
+                            if (bookMode !== "page") event.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          Page
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBookMode("percent")}
+                          style={{
+                            border: "none",
+                            borderRadius: 999,
+                            padding: "6px 10px",
+                            cursor: "pointer",
+                            background: bookMode === "percent" ? theme.colors.accent : "transparent",
+                            color: bookMode === "percent" ? theme.colors.accentText : theme.colors.textSecondary,
+                            transition: "background-color 120ms ease, color 120ms ease"
+                          }}
+                          onMouseEnter={(event) => {
+                            if (bookMode !== "percent") event.currentTarget.style.background = `${theme.colors.surfaceMuted}`;
+                          }}
+                          onMouseLeave={(event) => {
+                            if (bookMode !== "percent") event.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          %
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
+              </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ display: "grid", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
+                    <label style={{ color: theme.colors.textSecondary, whiteSpace: "nowrap" }}>
+                      Group
+                    </label>
+                    <select value={groupId} onChange={(event) => setGroupId(event.target.value)} style={pillControlStyle(theme)}>
+                      <option value="">Public</option>
+                      {groups.map((group) => <option key={group.id} value={group.id}>{group.label}</option>)}
+                    </select>
+                  </div>
                   <button
                     type="button"
                     onClick={async () => {
