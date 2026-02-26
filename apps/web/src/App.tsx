@@ -7,7 +7,6 @@ import {
   radiusTokens,
   resolveThemePreference,
   spacingTokens,
-  type BottomNavItem,
   type ThemeMode,
   type ThemePreference
 } from "@nospoilers/ui";
@@ -25,7 +24,6 @@ import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { PublicFeedScreen } from "./screens/PublicFeedScreen";
-import { NotificationsScreen } from "./screens/NotificationsScreen";
 import { ProfileTabScreen, type ShelfItem } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
 import {
@@ -36,11 +34,10 @@ import {
 import { getSession, onAuthStateChange, signOut } from "./services/authClient";
 import { supabaseClient } from "./services/supabaseClient";
 import { profileNeedsOnboarding } from "./profileOnboarding";
-import { BottomNav } from "./components/BottomNav";
 
 const THEME_KEY = "nospoilers:web:theme-preference";
 
-type MainView = BottomNavItem["key"];
+type MainView = "groups" | "for-you" | "profile";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 type GroupEntity = SupabaseGroupRow;
@@ -156,6 +153,8 @@ const mapUserWithProfile = async (
 export const App = () => {
   const [mainView, setMainView] = useState<MainView>("groups");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
   const [currentUser, setCurrentUser] = useState<AuthUser>();
   const [systemMode, setSystemMode] = useState<ThemeMode>(() => getSystemMode());
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
@@ -892,22 +891,22 @@ export const App = () => {
       style={{
         minHeight: "100vh",
         display: "grid",
-        placeItems: "center",
         background: theme.colors.background,
         padding: spacingTokens.lg
       }}
     >
       <div
         style={{
-          width: "min(430px, 100%)",
-          height: "min(880px, calc(100vh - 32px))",
+          width: "min(1400px, 100%)",
+          height: "calc(100vh - 32px)",
+          margin: "0 auto",
           background: theme.colors.surface,
           border: `1px solid ${theme.colors.border}`,
-          borderRadius: 28,
+          borderRadius: 20,
           boxShadow: elevationTokens.medium,
           overflow: "hidden",
           display: "grid",
-          gridTemplateRows: "auto 1fr auto"
+          gridTemplateRows: "auto 1fr"
         }}
       >
         <header
@@ -915,47 +914,57 @@ export const App = () => {
             padding: spacingTokens.md,
             borderBottom: `1px solid ${theme.colors.border}`,
             display: "grid",
-            gridTemplateColumns: "1fr auto auto auto",
+            gridTemplateColumns: "180px minmax(280px, 1fr) auto",
             alignItems: "center",
-            gap: spacingTokens.sm
+            gap: spacingTokens.md
           }}
         >
-          <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 18 }}>NoSpoilers</h2>
+          <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 22 }}>NoSpoilers</h2>
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onFocus={() => openCatalogSearch({ mode: "post" })}
+            placeholder="Search books, shows, and posts"
+            style={{
+              width: "100%",
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: 12,
+              padding: "12px 14px",
+              background: theme.colors.background,
+              color: theme.colors.textPrimary,
+              fontSize: 14
+            }}
+          />
 
-          <div style={{ position: "relative", justifySelf: "end" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.sm, position: "relative" }}>
+            <button
+              type="button"
+              aria-label="Open notifications"
+              onClick={() => setNotificationModalOpen(true)}
+              style={{
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: 10,
+                background: theme.colors.surface,
+                color: theme.colors.textPrimary,
+                padding: "10px 12px",
+                cursor: "pointer"
+              }}
+            >
+              🔔 {notifications.length}
+            </button>
             <button
               type="button"
               aria-label="Account menu"
               onClick={() => setMenuOpen((current) => !current)}
-              style={{
-                background: "transparent",
-                border: `1px solid ${theme.colors.border}`,
-                borderRadius: 12,
-                color: theme.colors.textPrimary,
-                padding: "8px 10px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 10
-              }}
+              style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
             >
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{currentUser.displayName ?? "Reader"}</div>
-                <div style={{ fontSize: 11, color: theme.colors.textSecondary }}>
-                  @{currentUser.username ?? "nospoiler"}
-                </div>
-              </div>
               <img
                 src={currentUser.avatarUrl?.trim() || DEFAULT_AVATAR_PLACEHOLDER}
                 alt="Your avatar"
-                style={{ width: 28, height: 28, borderRadius: 999, objectFit: "cover" }}
+                style={{ width: 36, height: 36, borderRadius: 999, objectFit: "cover", border: `1px solid ${theme.colors.border}` }}
               />
-              <span style={{ letterSpacing: 1 }}>⋮</span>
             </button>
-
-            {authStatus ? (
-              <small style={{ color: theme.colors.textSecondary, justifySelf: "end" }}>{authStatus}</small>
-            ) : null}
 
             {menuOpen ? (
               <div
@@ -968,18 +977,15 @@ export const App = () => {
                   borderRadius: 12,
                   boxShadow: elevationTokens.low,
                   overflow: "hidden",
-                  zIndex: 5
+                  zIndex: 10,
+                  minWidth: 180
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainView("profile");
-                    setMenuOpen(false);
-                  }}
-                  style={menuItem(theme)}
-                >
-                  Profile
+                <button type="button" onClick={() => { setMainView("profile"); setShowProfileSettings(false); setMenuOpen(false); }} style={menuItem(theme)}>
+                  View profile
+                </button>
+                <button type="button" onClick={() => { setMainView("profile"); setShowProfileSettings(true); setMenuOpen(false); }} style={menuItem(theme)}>
+                  Account settings
                 </button>
                 <button
                   type="button"
@@ -1000,91 +1006,71 @@ export const App = () => {
               </div>
             ) : null}
           </div>
-
-          <button
-            type="button"
-            aria-label="Search catalog"
-            onClick={() => openCatalogSearch({ mode: "post" })}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 999,
-              border: `1px solid ${theme.colors.border}`,
-              background: theme.colors.surface,
-              color: theme.colors.textPrimary,
-              fontSize: 18,
-              cursor: "pointer"
-            }}
-            title="Search books / TV shows"
-          >
-            🔎
-          </button>
-
-          <button
-            type="button"
-            aria-label="Create post"
-            onClick={() => setShowCreatePostSheet(true)}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 999,
-              border: "none",
-              background: theme.colors.accent,
-              color: "#fff",
-              fontSize: 28,
-              lineHeight: "28px",
-              fontWeight: 700,
-              cursor: "pointer"
-            }}
-          >
-            +
-          </button>
         </header>
 
-        <main
-          style={{
-            overflowY: "auto",
-            padding: spacingTokens.md,
-            display: "grid",
-            alignContent: "start",
-            gap: spacingTokens.md,
-            background: theme.colors.background
-          }}
-        >
-          {mainView === "profile" ? (
-            showProfileSettings ? (
-              <ProfileSettingsScreen
-                user={currentUser}
-                onProfileUpdated={setCurrentUser}
-                onAccountDeleted={() => {
-                  setCurrentUser(undefined);
-                  setNeedsOnboarding(false);
-                  setMainView("groups");
-                  setMenuOpen(false);
-                }}
-                onThemePreferenceChanged={onThemePreferenceChanged}
-                themePreference={themePreference}
-                theme={theme}
-              />
-            ) : (
-              <>
+        <main style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 320px", minHeight: 0, background: theme.colors.background }}>
+          <aside style={{ borderRight: `1px solid ${theme.colors.border}`, overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
+            <button
+              type="button"
+              onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setShowProfileSettings(false); }}
+              style={{ ...menuItem(theme), borderRadius: 10, background: mainView === "for-you" ? `${theme.colors.accent}14` : "transparent", color: mainView === "for-you" ? theme.colors.accent : theme.colors.textPrimary }}
+            >
+              For you
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreatePostSheet(true)}
+              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "10px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer", textAlign: "left" }}
+            >
+              + Create post
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCreateGroupSheet(true)}
+              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "10px 12px", background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer", textAlign: "left" }}
+            >
+              + Create group
+            </button>
+            <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm }}>Your groups</strong>
+            {groups.map((group) => {
+              const active = mainView === "groups" && selectedGroupId === String(group.id);
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
+                  style={{ ...menuItem(theme), borderRadius: 10, background: active ? `${theme.colors.accent}14` : "transparent", color: active ? theme.colors.accent : theme.colors.textPrimary }}
+                >
+                  {group.name}
+                </button>
+              );
+            })}
+          </aside>
+
+          <section style={{ overflowY: "auto", padding: spacingTokens.md, minWidth: 0 }}>
+            {mainView === "profile" ? (
+              showProfileSettings ? (
+                <ProfileSettingsScreen
+                  user={currentUser}
+                  onProfileUpdated={setCurrentUser}
+                  onAccountDeleted={() => {
+                    setCurrentUser(undefined);
+                    setNeedsOnboarding(false);
+                    setMainView("groups");
+                    setMenuOpen(false);
+                  }}
+                  onThemePreferenceChanged={onThemePreferenceChanged}
+                  themePreference={themePreference}
+                  theme={theme}
+                />
+              ) : (
                 <ProfileTabScreen
                   theme={theme}
                   user={currentUser}
                   onEditProfile={() => setShowProfileSettings(true)}
                   onAccountSettings={() => setShowProfileSettings(true)}
                   shelfItems={shelfItems}
-                  onSaveShelfProgress={async ({
-                    catalogItemId,
-                    status,
-                    currentPage,
-                    progressPercent,
-                    currentSeasonNumber,
-                    currentEpisodeNumber,
-                    watchedEpisodeCount
-                  }) => {
-                    if (!currentUser) return;
-                    const nowIso = new Date().toISOString();
+                  onSaveShelfProgress={async ({ catalogItemId, status, currentPage, progressPercent, currentSeasonNumber, currentEpisodeNumber, watchedEpisodeCount }) => {
                     const payload = {
                       user_id: currentUser.id,
                       catalog_item_id: Number(catalogItemId),
@@ -1093,173 +1079,104 @@ export const App = () => {
                       progress_percent: progressPercent ?? null,
                       current_season_number: currentSeasonNumber ?? null,
                       current_episode_number: currentEpisodeNumber ?? null,
-                      completed_at: status === "completed" ? nowIso : null,
-                      updated_at: nowIso
+                      watched_episode_count: watchedEpisodeCount ?? null
                     };
 
-                    const { error } = await supabaseClient.from("user_media_progress").upsert(payload, { onConflict: "user_id,catalog_item_id" });
+                    const { error } = await supabaseClient.from("user_shelf").upsert(payload, { onConflict: "user_id,catalog_item_id" });
                     if (error) {
-                      throw new Error(error.message);
+                      console.error("[app] failed to update shelf progress", error);
+                      return;
                     }
-
-                    setShelfItems((prev) => prev.map((item) => {
-                      if (item.catalogItemId !== catalogItemId) return item;
-                      const nextProgressSummary = item.itemType === "book"
-                        ? (progressPercent != null ? `${Math.round(progressPercent)}%` : `Page ${currentPage ?? item.currentPage ?? 0}/${item.pageCount ?? "?"}`)
-                        : `${Math.round((watchedEpisodeCount != null && item.tvProgressUnits.length)
-                            ? (watchedEpisodeCount / item.tvProgressUnits.length) * 100
-                            : (progressPercent ?? item.progressPercent))}% watched`;
-                      const nextProgressPercent = item.itemType === "book"
-                        ? Math.max(0, Math.min(100, Math.round(progressPercent ?? (currentPage && item.pageCount ? (currentPage / item.pageCount) * 100 : item.progressPercent))))
-                        : (() => {
-                            if (watchedEpisodeCount != null && item.tvProgressUnits.length) {
-                              return Math.max(0, Math.min(100, Math.round((watchedEpisodeCount / item.tvProgressUnits.length) * 100)));
-                            }
-                            return Math.max(0, Math.min(100, Math.round(progressPercent ?? item.progressPercent)));
-                          })();
-                      return {
-                        ...item,
-                        status,
-                        updatedAt: nowIso,
-                        completedAt: status === "completed" ? nowIso : null,
-                        progressSummary: nextProgressSummary,
-                        progressPercent: nextProgressPercent,
-                        currentPage: currentPage ?? item.currentPage ?? null,
-                        progressPercentValue: progressPercent ?? item.progressPercentValue ?? null,
-                        currentSeasonNumber: currentSeasonNumber ?? item.currentSeasonNumber ?? null,
-                        currentEpisodeNumber: currentEpisodeNumber ?? item.currentEpisodeNumber ?? null
-                      };
-                    }));
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => openCatalogSearch({ mode: "profile" })}
-                  style={{
-                    justifySelf: "start",
-                    borderRadius: radiusTokens.md,
-                    border: `1px solid ${theme.colors.border}`,
-                    padding: "10px 12px",
-                    background: theme.colors.surface,
-                    color: theme.colors.textPrimary,
-                    cursor: "pointer"
-                  }}
-                >
-                  Add book / show to profile
-                </button>
-              </>
-            )
-          ) : null}
+              )
+            ) : null}
 
-          {mainView === "groups" ? (
-            <>
-              {selectedGroup ? (
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} /> : null}
+
+            {mainView === "groups" ? (
+              selectedGroup ? (
                 <>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacingTokens.sm, marginBottom: spacingTokens.md }}>
+                    <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{selectedGroup.name}</h3>
                     <button
                       type="button"
-                      onClick={() => { setSelectedGroupId(null); setSelectedGroupCatalogItemId(null); }}
-                      style={{
-                        justifySelf: "start",
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: radiusTokens.md,
-                        padding: "8px 12px",
-                        background: theme.colors.surface,
-                        color: theme.colors.textPrimary,
-                        cursor: "pointer"
-                      }}
+                      onClick={() => openCatalogSearch({ mode: "group", groupId: selectedGroupId! })}
+                      style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, padding: "6px 12px", background: theme.colors.surface, cursor: "pointer" }}
                     >
-                      ← Back to groups
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openCatalogSearch({ mode: "group", groupId: String(selectedGroup.id) })}
-                      style={{
-                        justifySelf: "start",
-                        border: `1px solid ${theme.colors.border}`,
-                        borderRadius: radiusTokens.md,
-                        padding: "8px 12px",
-                        background: theme.colors.surface,
-                        color: theme.colors.textPrimary,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Add book / show
+                      Add title to group
                     </button>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(120px, 0.45fr) minmax(0, 1fr)", gap: spacingTokens.sm }}>
-                    <aside style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, background: theme.colors.surface, padding: spacingTokens.sm, display: "grid", gap: 6, alignContent: "start", height: "fit-content" }}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedGroupCatalogItemId(null)}
-                        style={{ textAlign: "left", border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: selectedGroupCatalogItemId ? "transparent" : `${theme.colors.accent}14`, color: selectedGroupCatalogItemId ? theme.colors.textPrimary : theme.colors.accent, cursor: "pointer" }}
-                      >
-                        Home
-                      </button>
-                      {selectedGroupCatalogItems.map((item) => (
-                        <button
-                          key={`${item.groupId}-${item.catalogItemId}`}
-                          type="button"
-                          onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
-                          style={{ textAlign: "left", border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: selectedGroupCatalogItemId === item.catalogItemId ? `${theme.colors.accent}14` : "transparent", color: selectedGroupCatalogItemId === item.catalogItemId ? theme.colors.accent : theme.colors.textPrimary, cursor: "pointer" }}
-                        >
-                          {item.title}
-                        </button>
-                      ))}
-                    </aside>
-
-                    <PublicFeedScreen
-                      theme={theme}
-                      status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
-                      errorMessage={groupError}
-                      posts={selectedGroupPosts}
-                      title={`${selectedGroup.name} Feed`}
-                      loadingMessage="Loading group posts…"
-                      emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
-                    />
-                  </div>
+                  <PublicFeedScreen
+                    theme={theme}
+                    status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
+                    errorMessage={groupError}
+                    posts={selectedGroupPosts}
+                    title={`${selectedGroup.name} Feed`}
+                    loadingMessage="Loading group posts…"
+                    emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
+                  />
                 </>
               ) : (
-                <>
-                  <GroupScreen
-                    groups={groups.map((group) => ({
-                      id: String(group.id),
-                      name: group.name,
-                      description: group.description,
-                      coverUrl: mapAvatarPathToUiValue(group.avatar_path)
-                    }))}
-                    status={groupStatus}
-                    errorMessage={groupError}
-                    theme={theme}
-                    onCreateGroup={() => setShowCreateGroupSheet(true)}
-                    onSelectGroup={(groupId) => { setSelectedGroupId(groupId); setSelectedGroupCatalogItemId(null); }}
-                  />
-                  <small style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</small>
-                </>
-              )}
-            </>
-          ) : null}
+                <GroupScreen
+                  groups={groups.map((group) => ({
+                    id: String(group.id),
+                    name: group.name,
+                    description: group.description,
+                    coverUrl: mapAvatarPathToUiValue(group.avatar_path)
+                  }))}
+                  status={groupStatus}
+                  errorMessage={groupError}
+                  theme={theme}
+                  onCreateGroup={() => setShowCreateGroupSheet(true)}
+                  onSelectGroup={(groupId) => {
+                    setSelectedGroupId(groupId);
+                    setSelectedGroupCatalogItemId(null);
+                  }}
+                />
+              )
+            ) : null}
+            {catalogSearchError ? <small style={{ color: "#b42318" }}>Catalog search/import error: {catalogSearchError}</small> : null}
+            {authStatus ? <small style={{ color: theme.colors.textSecondary }}>{authStatus}</small> : null}
+          </section>
 
-          {mainView === "notifications" ? <NotificationsScreen theme={theme} events={notifications} /> : null}
-
-          {mainView === "for-you" ? (
-            <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} />
-          ) : null}
-
-          {catalogSearchError ? (
-            <small style={{ color: "#b42318" }}>Catalog search/import error: {catalogSearchError}</small>
-          ) : null}
+          <aside style={{ borderLeft: `1px solid ${theme.colors.border}`, overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
+            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Your shelf</h3>
+            {shelfItems.length ? shelfItems.map((item) => (
+              <article key={item.catalogItemId} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: 4 }}>
+                <strong style={{ color: theme.colors.textPrimary, fontSize: 13 }}>{item.title}</strong>
+                <small style={{ color: theme.colors.textSecondary }}>{item.progressSummary}</small>
+              </article>
+            )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
+          </aside>
         </main>
-
-        <BottomNav
-          activeTab={mainView}
-          onSelect={(view) => {
-            setMainView(view);
-            setMenuOpen(false);
-          }}
-          theme={theme}
-        />
       </div>
+
+      {notificationModalOpen ? (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "grid", placeItems: "center", zIndex: 30, padding: spacingTokens.lg }}
+          onClick={() => setNotificationModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Notifications"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: "min(520px, 90vw)", maxHeight: "70vh", overflowY: "auto", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Notifications</h3>
+              <button type="button" onClick={() => setNotificationModalOpen(false)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 8, background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}>Close</button>
+            </div>
+            {notifications.length ? notifications.map((eventItem) => (
+              <article key={eventItem.id} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: 2 }}>
+                <strong style={{ color: theme.colors.textPrimary, fontSize: 13 }}>{eventItem.text}</strong>
+                <small style={{ color: theme.colors.textSecondary }}>{new Date(eventItem.createdAt).toLocaleString()}</small>
+              </article>
+            )) : <small style={{ color: theme.colors.textSecondary }}>No notifications yet.</small>}
+          </div>
+        </div>
+      ) : null}
 
       <PostComposerSheet
         open={showCreatePostSheet}
