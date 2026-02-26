@@ -189,6 +189,7 @@ export const App = () => {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
   const [groupCatalogItems, setGroupCatalogItems] = useState<GroupCatalogItem[]>([]);
+  const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
 
   const syncAuthState = async (session: Session | null) => {
@@ -402,6 +403,7 @@ export const App = () => {
       setFeedError(undefined);
       setShelfItems([]);
       setGroupCatalogItems([]);
+      setSelectedShelfCatalogItemId(null);
       setSelectedGroupCatalogItemId(null);
       return;
     }
@@ -745,6 +747,11 @@ export const App = () => {
         return String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "") === selectedGroupCatalogItemId;
       })
     : [];
+  const selectedShelfPosts = selectedShelfCatalogItemId
+    ? posts.filter(
+        (post) => String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "") === selectedShelfCatalogItemId
+      )
+    : posts;
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
@@ -892,18 +899,14 @@ export const App = () => {
         minHeight: "100vh",
         display: "grid",
         background: theme.colors.background,
-        padding: spacingTokens.lg
+        padding: 0
       }}
     >
       <div
         style={{
-          width: "min(1400px, 100%)",
-          height: "calc(100vh - 32px)",
-          margin: "0 auto",
+          width: "100%",
+          minHeight: "100vh",
           background: theme.colors.surface,
-          border: `1px solid ${theme.colors.border}`,
-          borderRadius: 20,
-          boxShadow: elevationTokens.medium,
           overflow: "hidden",
           display: "grid",
           gridTemplateRows: "auto 1fr"
@@ -912,7 +915,6 @@ export const App = () => {
         <header
           style={{
             padding: spacingTokens.md,
-            borderBottom: `1px solid ${theme.colors.border}`,
             display: "grid",
             gridTemplateColumns: "180px minmax(280px, 1fr) auto",
             alignItems: "center",
@@ -1008,12 +1010,20 @@ export const App = () => {
           </div>
         </header>
 
-        <main style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 320px", minHeight: 0, background: theme.colors.background }}>
-          <aside style={{ borderRight: `1px solid ${theme.colors.border}`, overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
+        <main
+          style={{
+            display: "grid",
+            gridTemplateColumns: "220px 220px minmax(420px, 760px) 220px",
+            justifyContent: "center",
+            minHeight: 0,
+            background: theme.colors.background
+          }}
+        >
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs }}>
             <button
               type="button"
-              onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setShowProfileSettings(false); }}
-              style={{ ...menuItem(theme), borderRadius: 10, background: mainView === "for-you" ? `${theme.colors.accent}14` : "transparent", color: mainView === "for-you" ? theme.colors.accent : theme.colors.textPrimary }}
+              onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setSelectedShelfCatalogItemId(null); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
+              style={listItemStyle(theme, mainView === "for-you")}
             >
               For you
             </button>
@@ -1031,7 +1041,7 @@ export const App = () => {
             >
               + Create group
             </button>
-            <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm }}>Your groups</strong>
+            <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 14px" }}>Your groups</strong>
             {groups.map((group) => {
               const active = mainView === "groups" && selectedGroupId === String(group.id);
               return (
@@ -1039,12 +1049,58 @@ export const App = () => {
                   key={group.id}
                   type="button"
                   onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
-                  style={{ ...menuItem(theme), borderRadius: 10, background: active ? `${theme.colors.accent}14` : "transparent", color: active ? theme.colors.accent : theme.colors.textPrimary }}
+                  style={listItemStyle(theme, active)}
                 >
                   {group.name}
                 </button>
               );
             })}
+          </aside>
+
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs }}>
+            {mainView === "for-you" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedShelfCatalogItemId(null)}
+                  style={listItemStyle(theme, selectedShelfCatalogItemId == null)}
+                >
+                  Home
+                </button>
+                {shelfItems.map((item) => (
+                  <button
+                    key={item.catalogItemId}
+                    type="button"
+                    onClick={() => setSelectedShelfCatalogItemId(item.catalogItemId)}
+                    style={listItemStyle(theme, selectedShelfCatalogItemId === item.catalogItemId)}
+                  >
+                    {item.title}
+                  </button>
+                ))}
+              </>
+            ) : null}
+
+            {mainView === "groups" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupCatalogItemId(null)}
+                  style={listItemStyle(theme, selectedGroupCatalogItemId == null)}
+                >
+                  Home
+                </button>
+                {selectedGroupCatalogItems.map((item) => (
+                  <button
+                    key={`${item.groupId}-${item.catalogItemId}`}
+                    type="button"
+                    onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
+                    style={listItemStyle(theme, selectedGroupCatalogItemId === item.catalogItemId)}
+                  >
+                    {item.title}
+                  </button>
+                ))}
+              </>
+            ) : null}
           </aside>
 
           <section style={{ overflowY: "auto", padding: spacingTokens.md, minWidth: 0 }}>
@@ -1092,7 +1148,7 @@ export const App = () => {
               )
             ) : null}
 
-            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={posts} /> : null}
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} /> : null}
 
             {mainView === "groups" ? (
               selectedGroup ? (
@@ -1140,14 +1196,8 @@ export const App = () => {
             {authStatus ? <small style={{ color: theme.colors.textSecondary }}>{authStatus}</small> : null}
           </section>
 
-          <aside style={{ borderLeft: `1px solid ${theme.colors.border}`, overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
-            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Your shelf</h3>
-            {shelfItems.length ? shelfItems.map((item) => (
-              <article key={item.catalogItemId} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: 4 }}>
-                <strong style={{ color: theme.colors.textPrimary, fontSize: 13 }}>{item.title}</strong>
-                <small style={{ color: theme.colors.textSecondary }}>{item.progressSummary}</small>
-              </article>
-            )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
+          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.sm }}>
+            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Trending</h3>
           </aside>
         </main>
       </div>
@@ -1446,6 +1496,13 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   textAlign: "left",
   padding: "10px 14px",
   cursor: "pointer"
+});
+
+const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean): CSSProperties => ({
+  ...menuItem(theme),
+  padding: "10px 14px",
+  background: active ? `${theme.colors.accent}14` : "transparent",
+  color: active ? theme.colors.accent : theme.colors.textPrimary
 });
 
 // Kept in case you use it again shortly.
