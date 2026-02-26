@@ -568,6 +568,7 @@ export const App = () => {
             coverImageUrl: catalogItem?.cover_image_url ?? undefined,
             status: row.status,
             addedAt: row.started_at || row.updated_at || new Date().toISOString(),
+            updatedAt: row.updated_at || row.started_at || new Date().toISOString(),
             completedAt: row.completed_at,
             progressSummary,
             progressPercent,
@@ -1115,6 +1116,7 @@ export const App = () => {
                       return {
                         ...item,
                         status,
+                        updatedAt: nowIso,
                         completedAt: status === "completed" ? nowIso : null,
                         progressSummary: nextProgressSummary,
                         progressPercent: nextProgressPercent,
@@ -1371,6 +1373,7 @@ export const App = () => {
                 coverImageUrl: imported.catalog_item.cover_image_url ?? undefined,
                 status: "in_progress",
                 addedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
                 completedAt: null,
                 progressSummary: imported.catalog_item.item_type === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
                 progressPercent: 0,

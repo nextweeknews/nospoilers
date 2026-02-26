@@ -284,6 +284,53 @@ const parseErrorMessageFromJson = (json: unknown, fallback: string): string => {
   return fallback;
 };
 
+const parseNumericPageCount = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").trim();
+    if (!normalized) return null;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const extractPageCount = (metadata: Record<string, unknown> | undefined): number | null => {
+  if (!metadata) return null;
+
+  const volumeInfo =
+    metadata.volumeInfo && typeof metadata.volumeInfo === "object"
+      ? (metadata.volumeInfo as Record<string, unknown>)
+      : undefined;
+
+  const candidates = [
+    metadata.page_count,
+    metadata.pageCount,
+    metadata.number_of_pages,
+    metadata.pages,
+    volumeInfo?.pageCount
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseNumericPageCount(candidate);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const hasNonZeroBookPageCount = (item: CatalogSearchResult): boolean => {
+  if (item.item_type !== "book") return true;
+  const pageCount = extractPageCount(item.metadata);
+  return pageCount !== null && pageCount > 0;
+};
+
 const parseSearchResponse = async (response: Response): Promise<SearchResponse> => {
   let json: unknown;
   try {
@@ -315,7 +362,8 @@ const parseSearchResponse = async (response: Response): Promise<SearchResponse> 
       // Then try current edge-function format
       return toUiResultFromEdge(item as EdgeFunctionSearchResult);
     })
-    .filter((item): item is CatalogSearchResult => Boolean(item));
+    .filter((item): item is CatalogSearchResult => Boolean(item))
+    .filter(hasNonZeroBookPageCount);
 
   return {
     results: normalizedResults,
