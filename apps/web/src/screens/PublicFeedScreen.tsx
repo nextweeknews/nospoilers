@@ -67,7 +67,7 @@ export const PublicFeedScreen = ({
           display: "grid",
           gridTemplateColumns: "44px minmax(0, 1fr)",
           columnGap: spacingTokens.sm,
-          padding: `${spacingTokens.sm} 0`,
+          padding: spacingTokens.md,
           borderBottom: `1px solid ${theme.colors.border}`
         }}
       >
@@ -79,21 +79,65 @@ export const PublicFeedScreen = ({
         />
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
-            <strong style={{ color: theme.colors.textPrimary }}>{post.authorDisplayName}</strong>
+            <strong style={{ color: theme.colors.textPrimary, fontWeight: 600 }}>{post.authorDisplayName}</strong>
             {showCatalogContext && post.catalogItemTitle ? (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span
                   aria-hidden="true"
-                  style={{ color: theme.colors.textSecondary, fontSize: 11, lineHeight: 1, transform: "translateY(1px)" }}
-                >
-                  ▸
+                  style={{
+                    display: "inline-block",
+                    width: 12,
+                    height: 12,
+                    backgroundColor: theme.colors.textSecondary,
+                    maskImage: "url('/graphics/rightarrow.svg')",
+                    maskRepeat: "no-repeat",
+                    maskPosition: "center",
+                    maskSize: "contain",
+                    WebkitMaskImage: "url('/graphics/rightarrow.svg')",
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    WebkitMaskSize: "contain"
+                  }}
+                />
+                <span style={{ color: theme.colors.textPrimary, fontSize: "inherit", fontWeight: 600 }}>
+                  {post.catalogItemTitle}
                 </span>
-                <small style={{ color: theme.colors.textPrimary }}>{post.catalogItemTitle}</small>
               </span>
             ) : null}
             <small style={{ color: theme.colors.textSecondary }}>{formatRelativeTimestamp(post.created_at)}</small>
           </div>
-          {post.progressLine ? <small style={{ color: theme.colors.textSecondary, marginLeft: 2 }}>{post.progressLine}</small> : null}
+          {post.progressLine ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                marginLeft: 10,
+                color: theme.colors.textSecondary,
+                fontSize: 12,
+                fontWeight: 500
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 12,
+                  height: 12,
+                  backgroundColor: theme.colors.textSecondary,
+                  maskImage: "url('/graphics/downrightconnectorarrow.svg')",
+                  maskRepeat: "no-repeat",
+                  maskPosition: "center",
+                  maskSize: "contain",
+                  WebkitMaskImage: "url('/graphics/downrightconnectorarrow.svg')",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskPosition: "center",
+                  WebkitMaskSize: "contain"
+                }}
+              />
+              {post.progressLine}
+            </span>
+          ) : null}
           <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap" }}>{post.previewText ?? "(No text)"}</p>
         </div>
       </article>
