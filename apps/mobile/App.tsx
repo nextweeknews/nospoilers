@@ -192,7 +192,7 @@ export default function App() {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,group_id")
+            .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -211,7 +211,7 @@ export default function App() {
 
       const publicFeedResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,group_id")
+        .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id")
         .eq("status", "published")
         .is("deleted_at", null)
         .is("group_id", null)
