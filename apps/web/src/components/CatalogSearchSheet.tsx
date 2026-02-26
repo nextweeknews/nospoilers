@@ -67,6 +67,7 @@ export type CatalogImportResponse = {
  */
 type EdgeFunctionSearchResult = {
   provider?: string;
+  metadata_source?: string;
   source_id?: string;
   item_type?: string;
   title?: string;
@@ -347,6 +348,9 @@ const parseImportResponse = async (response: Response): Promise<CatalogImportRes
   }
   return json as CatalogImportResponse;
 };
+
+const rawProvider = raw.provider ?? raw.metadata_source;
+const provider = normalizeSource(rawProvider);
 
 const loadRecentSearches = (): string[] => {
   try {
