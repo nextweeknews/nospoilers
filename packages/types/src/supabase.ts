@@ -22,6 +22,9 @@ export type SupabasePostRow = {
   deleted_at: string | null;
   group_id: string | null;
   catalog_item_id: string | null;
+  progress_unit_id: string | null;
+  book_page: number | null;
+  book_percent: number | null;
 };
 
 export type PostAudienceSelection = {
@@ -55,6 +58,8 @@ export type SupabasePostInsert = {
   group_id: string | null;
   catalog_item_id: string | null;
   progress_unit_id: string | null;
+  book_page: number | null;
+  book_percent: number | null;
   tenor_gif_id: string | null;
   tenor_gif_url: string | null;
   has_media: boolean;

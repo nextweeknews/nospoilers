@@ -47,6 +47,7 @@ type PostEntity = SupabasePostRow & {
   authorDisplayName: string;
   authorAvatarUrl?: string;
   catalogItemTitle?: string;
+  progressLine?: string;
 };
 
 type OptionRow = { id: string; title: string };
@@ -100,6 +101,22 @@ const formatAuthorDisplayName = (author: { display_name?: string | null; usernam
   }
 
   return "Unknown";
+};
+
+
+
+const formatPostProgressLine = (post: SupabasePostRow & {
+  book_page?: number | null;
+  book_percent?: number | null;
+  catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
+}): string | undefined => {
+  if (typeof post.book_page === "number") return `Page ${post.book_page}`;
+  if (typeof post.book_percent === "number") return `${post.book_percent}%`;
+  const unit = Array.isArray(post.catalog_progress_units) ? post.catalog_progress_units[0] : post.catalog_progress_units;
+  if (!unit) return undefined;
+  if (typeof unit.season_number !== "number" || typeof unit.episode_number !== "number") return undefined;
+  const episodeTitle = unit.title?.trim();
+  return `S${unit.season_number}, E${unit.episode_number}${episodeTitle ? ` - ${episodeTitle}` : ""}`;
 };
 
 const mapUser = (user: User, session: Session): AuthUser => ({
@@ -465,7 +482,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title)")
+            .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -487,7 +504,12 @@ export const App = () => {
                     (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
                   ) ?? DEFAULT_AVATAR_PLACEHOLDER,
                 catalogItemTitle:
-                  (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined
+                  (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined,
+                progressLine: formatPostProgressLine(post as SupabasePostRow & {
+                  book_page?: number | null;
+                  book_percent?: number | null;
+                  catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
+                })
               }))
             );
           }
@@ -622,7 +644,7 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title)")
+        .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
         .eq("status", "published")
         .is("deleted_at", null)
         .is("group_id", null)
@@ -645,7 +667,12 @@ export const App = () => {
               (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
             ) ?? DEFAULT_AVATAR_PLACEHOLDER,
           catalogItemTitle:
-            (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined
+            (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined,
+          progressLine: formatPostProgressLine(post as SupabasePostRow & {
+            book_page?: number | null;
+            book_percent?: number | null;
+            catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
+          })
         }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
@@ -1291,6 +1318,8 @@ export const App = () => {
                       group_id: audience.groupId,
                       catalog_item_id: payload.catalog_item_id,
                       progress_unit_id: payload.progress_unit_id,
+                      book_page: payload.book_page,
+                      book_percent: payload.book_percent,
                       tenor_gif_id: payload.tenor_gif_id,
                       tenor_gif_url: payload.tenor_gif_url
                     };
@@ -1298,7 +1327,7 @@ export const App = () => {
                     const { data: inserted, error } = await supabaseClient
                       .from("posts")
                       .insert(postInsertPayload)
-                      .select("id,body_text,created_at,status,deleted_at,group_id")
+                      .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent")
                       .single();
 
                     if (error || !inserted) {
@@ -1326,7 +1355,9 @@ export const App = () => {
                       ...(inserted as SupabasePostRow),
                       previewText: buildPostPreviewText(inserted.body_text),
                       authorDisplayName: currentUser.displayName?.trim() || currentUser.username || "You",
-                      authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER
+                      authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER,
+                      catalogItemTitle: shelfItems.find((item) => item.catalogItemId === String((inserted as SupabasePostRow).catalog_item_id))?.title,
+                      progressLine: formatPostProgressLine(inserted as SupabasePostRow)
                     };
 
                     if ((inserted as { group_id?: string | number | null }).group_id == null) {

@@ -7,6 +7,7 @@ type FeedPost = {
   authorDisplayName: string;
   authorAvatarUrl?: string;
   catalogItemTitle?: string;
+  progressLine?: string;
 };
 
 type PublicFeedScreenProps = {
@@ -77,13 +78,22 @@ export const PublicFeedScreen = ({
           loading="lazy"
         />
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
+          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
             <strong style={{ color: theme.colors.textPrimary }}>{post.authorDisplayName}</strong>
             {showCatalogContext && post.catalogItemTitle ? (
-              <small style={{ color: theme.colors.textSecondary }}>{`> ${post.catalogItemTitle}`}</small>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span
+                  aria-hidden="true"
+                  style={{ color: theme.colors.textSecondary, fontSize: 11, lineHeight: 1, transform: "translateY(1px)" }}
+                >
+                  ▸
+                </span>
+                <small style={{ color: theme.colors.textPrimary }}>{post.catalogItemTitle}</small>
+              </span>
             ) : null}
             <small style={{ color: theme.colors.textSecondary }}>{formatRelativeTimestamp(post.created_at)}</small>
           </div>
+          {post.progressLine ? <small style={{ color: theme.colors.textSecondary, marginLeft: 2 }}>{post.progressLine}</small> : null}
           <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap" }}>{post.previewText ?? "(No text)"}</p>
         </div>
       </article>
