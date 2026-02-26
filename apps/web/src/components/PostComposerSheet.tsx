@@ -28,6 +28,8 @@ type PostComposerSheetProps = {
     group_id: string | null;
     catalog_item_id: string;
     progress_unit_id: string | null;
+    book_page: number | null;
+    book_percent: number | null;
     tenor_gif_url: string | null;
     tenor_gif_id: string | null;
     attachments: Attachment[];
@@ -243,11 +245,11 @@ export const PostComposerSheet = ({
                   {selectedCatalog?.itemType === "tv_show" ? (
                     <>
                       <select value={selectedSeason} onChange={(event) => { setSelectedSeason(event.target.value); setProgressUnitId(""); }} style={{ ...pillControlStyle(theme), flex: "1 1 100px" }}>
-                        <option value="">S[n]</option>
+                        <option value="">Season</option>
                         {groupedSeasons.map(([season]) => <option key={season} value={String(season)}>{`Season ${season}`}</option>)}
                       </select>
                       <select value={progressUnitId} onChange={(event) => setProgressUnitId(event.target.value)} disabled={!selectedSeason} style={{ ...pillControlStyle(theme), opacity: selectedSeason ? 1 : 0.65, flex: "1 1 120px", minWidth: 120 }}>
-                        <option value="">E[n]</option>
+                        <option value="">Episode</option>
                         {seasonEpisodes.map((episode) => (
                           <option key={episode.id} value={episode.id}>{`E${episode.episodeNumber} - ${episode.title ?? "Untitled"}`.trim()}</option>
                         ))}
@@ -325,6 +327,8 @@ export const PostComposerSheet = ({
                     }
 
                     let resolvedProgressUnitId: string | null = null;
+                    let resolvedBookPage: number | null = null;
+                    let resolvedBookPercent: number | null = null;
                     if (selectedCatalog?.itemType === "tv_show") {
                       if (!progressUnitId) {
                         setError("Select a season and episode.");
@@ -337,7 +341,11 @@ export const PostComposerSheet = ({
                         setError(bookMode === "page" ? "Enter a valid page number." : "Enter a percent between 0 and 100.");
                         return;
                       }
-                      resolvedProgressUnitId = `${bookMode}:${numeric}`;
+                      if (bookMode === "page") {
+                        resolvedBookPage = numeric;
+                      } else {
+                        resolvedBookPercent = numeric;
+                      }
                     }
 
                     await onSubmit({
@@ -345,6 +353,8 @@ export const PostComposerSheet = ({
                       group_id: groupId || null,
                       catalog_item_id: catalogItemId,
                       progress_unit_id: resolvedProgressUnitId,
+                      book_page: resolvedBookPage,
+                      book_percent: resolvedBookPercent,
                       tenor_gif_id: tenorGifId || null,
                       tenor_gif_url: tenorGifUrl || null,
                       attachments
@@ -387,7 +397,7 @@ export const PostComposerSheet = ({
             style={{
               width: "100%",
               border: "none",
-              borderRadius: radiusTokens.pill,
+              borderRadius: composerCornerRadius,
               background: "transparent",
               color: theme.colors.textSecondary,
               padding: "12px 18px",
