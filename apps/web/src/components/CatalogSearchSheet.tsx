@@ -130,11 +130,11 @@ type LoadStatus = "idle" | "loading" | "ready" | "error";
 const MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 300;
 const DEFAULT_SEARCH_ENDPOINT = `${
-  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.FUNCTIONS_URL ?? ""
+  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_FUNCTIONS_URL ?? ""
 }/search-catalog`;
 
 const DEFAULT_IMPORT_ENDPOINT = `${
-  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.FUNCTIONS_URL ?? ""
+  (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_FUNCTIONS_URL ?? ""
 }/catalog-import`;
 const RECENT_SEARCHES_KEY = "nospoilers:catalog-search:recent";
 
