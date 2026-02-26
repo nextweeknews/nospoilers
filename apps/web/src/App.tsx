@@ -775,6 +775,17 @@ export const App = () => {
         (post) => String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "") === selectedShelfCatalogItemId
       )
     : posts;
+  const selectedShelfItem = selectedShelfCatalogItemId
+    ? shelfItems.find((item) => item.catalogItemId === selectedShelfCatalogItemId)
+    : undefined;
+  const selectedGroupCatalogItem = selectedGroupCatalogItemId
+    ? selectedGroupCatalogItems.find((item) => item.catalogItemId === selectedGroupCatalogItemId)
+    : undefined;
+  const createPostContextGroupName = mainView === "groups" ? selectedGroup?.name : undefined;
+  const createPostContextTitle = mainView === "groups" ? selectedGroupCatalogItem?.title : selectedShelfItem?.title;
+  const createPostTriggerText = `Create a post${createPostContextGroupName ? ` in ${createPostContextGroupName}` : ""}${createPostContextTitle ? ` about ${createPostContextTitle}` : ""}`;
+  const defaultCreatePostGroupId = mainView === "groups" && selectedGroupId ? selectedGroupId : undefined;
+  const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
@@ -1234,23 +1245,85 @@ export const App = () => {
             </div>
 
             {mainView !== "profile" ? (
-              <div style={{ position: "sticky", bottom: 0, background: theme.colors.background, paddingTop: spacingTokens.xs }}>
-                <input
-                  type="text"
-                  value=""
-                  readOnly
-                  onFocus={() => setShowCreatePostSheet(true)}
-                  onClick={() => setShowCreatePostSheet(true)}
-                  placeholder="Share an update…"
-                  aria-label="Create a post"
-                  style={{
-                    width: "100%",
-                    border: `1px solid ${theme.colors.border}`,
-                    borderRadius: radiusTokens.md,
-                    background: theme.colors.surface,
-                    color: theme.colors.textSecondary,
-                    padding: "12px 14px",
-                    cursor: "text"
+              <div style={{ position: "sticky", bottom: 0, background: theme.colors.background, paddingTop: spacingTokens.xs, paddingBottom: spacingTokens.xs }}>
+                <PostComposerSheet
+                  open={showCreatePostSheet}
+                  theme={theme}
+                  groups={groups.map((group) => ({ id: String(group.id), label: group.name }))}
+                  catalogItems={shelfItems.map((item) => ({
+                    id: item.catalogItemId,
+                    label: item.title,
+                    itemType: item.itemType,
+                    tvProgressUnits: item.tvProgressUnits
+                  }))}
+                  defaultGroupId={defaultCreatePostGroupId}
+                  defaultCatalogItemId={defaultCreatePostCatalogItemId}
+                  triggerText={createPostTriggerText}
+                  postAudienceLabel={createPostContextGroupName ?? "public"}
+                  onOpen={() => setShowCreatePostSheet(true)}
+                  onClose={() => setShowCreatePostSheet(false)}
+                  onSubmit={async (payload) => {
+                    if (!currentUser) {
+                      return;
+                    }
+
+                    const audience = resolveSingleGroupAudience({
+                      groupId: payload.group_id
+                    });
+
+                    if (payload.catalog_item_id) {
+                      setSelectedCatalogItemIdForProgress(String(payload.catalog_item_id));
+                    }
+
+                    const postInsertPayload: Record<string, unknown> = {
+                      author_user_id: currentUser.id,
+                      body_text: payload.body_text,
+                      group_id: audience.groupId,
+                      catalog_item_id: payload.catalog_item_id,
+                      progress_unit_id: payload.progress_unit_id,
+                      tenor_gif_id: payload.tenor_gif_id,
+                      tenor_gif_url: payload.tenor_gif_url
+                    };
+
+                    const { data: inserted, error } = await supabaseClient
+                      .from("posts")
+                      .insert(postInsertPayload)
+                      .select("id,body_text,created_at,status,deleted_at,group_id")
+                      .single();
+
+                    if (error || !inserted) {
+                      console.error("[app] post insert failed", error);
+                      return;
+                    }
+
+                    if (payload.attachments.length) {
+                      const attachmentRows = payload.attachments.map((attachment, index) => ({
+                        post_id: inserted.id,
+                        kind: attachment.kind,
+                        storage_path: attachment.url,
+                        size_bytes: attachment.bytes ?? null,
+                        sort_order: index
+                      }));
+
+                      const { error: attachmentError } = await supabaseClient.from("post_attachments").insert(attachmentRows);
+
+                      if (attachmentError) {
+                        console.error("[app] post_attachments insert failed", attachmentError);
+                      }
+                    }
+
+                    const insertedPost = {
+                      ...(inserted as SupabasePostRow),
+                      previewText: buildPostPreviewText(inserted.body_text),
+                      authorDisplayName: currentUser.displayName?.trim() || currentUser.username || "You",
+                      authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER
+                    };
+
+                    if ((inserted as { group_id?: string | number | null }).group_id == null) {
+                      setPosts((prev) => [insertedPost, ...prev]);
+                    } else {
+                      setGroupPosts((prev) => [insertedPost, ...prev]);
+                    }
                   }}
                 />
               </div>
@@ -1288,84 +1361,6 @@ export const App = () => {
           </div>
         </div>
       ) : null}
-
-      <PostComposerSheet
-        open={showCreatePostSheet}
-        theme={theme}
-        groups={groups.map((group) => ({ id: String(group.id), label: group.name }))}
-        catalogItems={(() => {
-          const base = catalogItems.map((entry) => ({ id: entry.id, label: entry.title }));
-          if (!pendingPostCatalogSelection) return base;
-          const exists = base.some((entry) => entry.id === pendingPostCatalogSelection.catalogItemId);
-          if (exists) return base;
-          return [{ id: pendingPostCatalogSelection.catalogItemId, label: pendingPostCatalogSelection.catalogItemLabel }, ...base];
-        })()}
-        progressUnits={progressUnits.map((entry) => ({ id: entry.id, label: entry.title }))}
-        onClose={() => setShowCreatePostSheet(false)}
-        onSubmit={async (payload) => {
-          if (!currentUser) {
-            return;
-          }
-
-          const audience = resolveSingleGroupAudience({
-            groupId: payload.group_id
-          });
-
-          if (payload.catalog_item_id) {
-            setSelectedCatalogItemIdForProgress(String(payload.catalog_item_id));
-          }
-
-          const postInsertPayload: Record<string, unknown> = {
-            author_user_id: currentUser.id,
-            body_text: payload.body_text,
-            group_id: audience.groupId,
-            catalog_item_id: payload.catalog_item_id,
-            progress_unit_id: payload.progress_unit_id,
-            tenor_gif_id: payload.tenor_gif_id,
-            tenor_gif_url: payload.tenor_gif_url
-          };
-
-          const { data: inserted, error } = await supabaseClient
-            .from("posts")
-            .insert(postInsertPayload)
-            .select("id,body_text,created_at,status,deleted_at,group_id")
-            .single();
-
-          if (error || !inserted) {
-            console.error("[app] post insert failed", error);
-            return;
-          }
-
-          if (payload.attachments.length) {
-            const attachmentRows = payload.attachments.map((attachment, index) => ({
-              post_id: inserted.id,
-              kind: attachment.kind,
-              storage_path: attachment.url, // temporary mapping until storage upload flow stores actual path
-              size_bytes: attachment.bytes ?? null,
-              sort_order: index
-            }));
-
-            const { error: attachmentError } = await supabaseClient.from("post_attachments").insert(attachmentRows);
-
-            if (attachmentError) {
-              console.error("[app] post_attachments insert failed", attachmentError);
-            }
-          }
-
-          const insertedPost = {
-            ...(inserted as SupabasePostRow),
-            previewText: buildPostPreviewText(inserted.body_text),
-            authorDisplayName: currentUser.displayName?.trim() || currentUser.username || "You",
-            authorAvatarUrl: currentUser.avatarUrl ?? DEFAULT_AVATAR_PLACEHOLDER
-          };
-
-          if ((inserted as { group_id?: string | number | null }).group_id == null) {
-            setPosts((prev) => [insertedPost, ...prev]);
-          } else {
-            setGroupPosts((prev) => [insertedPost, ...prev]);
-          }
-        }}
-      />
 
       {catalogSearchContext ? (
         <CatalogSearchSheet
