@@ -196,6 +196,7 @@ export const App = () => {
   };
 
   const FUNCTIONS_URL = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env?.VITE_SUPABASE_FUNCTIONS_URL ?? "";
+    console.log("VITE_SUPABASE_FUNCTIONS_URL", import.meta.env.VITE_SUPABASE_FUNCTIONS_URL);
 
   const refreshCatalogItems = async () => {
     const { data, error } = await supabaseClient
