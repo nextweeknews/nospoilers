@@ -8,6 +8,7 @@ type FeedPost = {
   authorAvatarUrl?: string;
   catalogItemTitle?: string;
   progressLine?: string;
+  isSpoilerHidden?: boolean;
 };
 
 type PublicFeedScreenProps = {
@@ -245,10 +246,10 @@ export const PublicFeedScreen = ({
             <p
               style={{
                 margin: 0,
-                color: theme.colors.textPrimary,
+                color: post.isSpoilerHidden ? theme.colors.textSecondary : theme.colors.textPrimary,
                 whiteSpace: "pre-wrap",
                 fontSize: 13,
-                fontWeight: 400,
+                fontWeight: post.isSpoilerHidden ? 500 : 400,
               }}
             >
               {post.previewText ?? "(No text)"}
