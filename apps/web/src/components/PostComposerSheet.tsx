@@ -134,7 +134,7 @@ export const PostComposerSheet = ({
     <>
       <style>{`
         @keyframes composerExpandUp {
-          from { transform: scaleY(0.23); opacity: 0.76; }
+          from { transform: scaleY(0.23); opacity: 0.76; border-radius: ${radiusTokens.pill}px; }
           to { transform: scaleY(1); opacity: 1; }
         }
         @keyframes composerContentIn {
@@ -146,7 +146,7 @@ export const PostComposerSheet = ({
         style={{
           marginInline: "auto",
           width: "min(720px, calc(100% - 24px))",
-          border: `1px solid ${open ? theme.colors.accent : "transparent"}`,
+          border: `1px solid ${theme.colors.border}`,
           borderRadius: open ? radiusTokens.lg : radiusTokens.pill,
           borderTopLeftRadius: radiusTokens.pill,
           borderTopRightRadius: radiusTokens.pill,
@@ -203,21 +203,28 @@ export const PostComposerSheet = ({
                 </div>
               ) : null}
 
-              <div style={{ display: "flex", gap: spacingTokens.sm, flexWrap: "wrap" }}>
-                <label style={{ color: theme.colors.textSecondary, display: "grid", gap: 4 }}>
-                  Group
+              <div style={{ display: "flex", gap: spacingTokens.sm, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
+                  <label style={{ color: theme.colors.textSecondary, whiteSpace: "nowrap" }}>
+                    Group
+                  </label>
                   <select value={groupId} onChange={(event) => setGroupId(event.target.value)} style={pillControlStyle(theme)}>
-                    <option value="">Post publicly</option>
+                    <option value="">Public</option>
                     {groups.map((group) => <option key={group.id} value={group.id}>{group.label}</option>)}
                   </select>
-                </label>
-                <label style={{ color: theme.colors.textSecondary, display: "grid", gap: 4 }}>
-                  Title *
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flex: "1 1 320px", minWidth: 220 }}>
+                  <label style={{ color: theme.colors.textSecondary, whiteSpace: "nowrap" }}>
+                    Title *
+                  </label>
                   <select value={catalogItemId} onChange={(event) => { setCatalogItemId(event.target.value); setSelectedSeason(""); setProgressUnitId(""); setBookProgressInput(""); }} style={pillControlStyle(theme)}>
                     <option value="">Select a title</option>
                     {catalogItems.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
-                </label>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "end", gap: spacingTokens.xs }}>
                   <label style={{ ...pillControlStyle(theme), display: "inline-flex", alignItems: "center", cursor: "pointer", padding: "10px 14px" }}>
                     <input
@@ -243,15 +250,15 @@ export const PostComposerSheet = ({
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: spacingTokens.sm, alignItems: "center", justifyContent: "space-between", borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm, flexWrap: "wrap" }}>
+              <div style={{ display: "grid", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
                 <div style={{ display: "flex", gap: spacingTokens.sm, alignItems: "center", flexWrap: "wrap" }}>
                   {selectedCatalog?.itemType === "tv_show" ? (
                     <>
-                      <select value={selectedSeason} onChange={(event) => { setSelectedSeason(event.target.value); setProgressUnitId(""); }} style={pillControlStyle(theme)}>
+                      <select value={selectedSeason} onChange={(event) => { setSelectedSeason(event.target.value); setProgressUnitId(""); }} style={{ ...pillControlStyle(theme), flex: "1 1 130px" }}>
                         <option value="">Season</option>
                         {groupedSeasons.map(([season]) => <option key={season} value={String(season)}>Season {season}</option>)}
                       </select>
-                      <select value={progressUnitId} onChange={(event) => setProgressUnitId(event.target.value)} disabled={!selectedSeason} style={{ ...pillControlStyle(theme), opacity: selectedSeason ? 1 : 0.65 }}>
+                      <select value={progressUnitId} onChange={(event) => setProgressUnitId(event.target.value)} disabled={!selectedSeason} style={{ ...pillControlStyle(theme), opacity: selectedSeason ? 1 : 0.65, flex: "1 1 220px", minWidth: 160 }}>
                         <option value="">Episode *</option>
                         {seasonEpisodes.map((episode) => (
                           <option key={episode.id} value={episode.id}>{`E${episode.episodeNumber} ${episode.title ?? ""}`.trim()}</option>
@@ -260,7 +267,7 @@ export const PostComposerSheet = ({
                     </>
                   ) : (
                     <>
-                      <input value={bookProgressInput} onChange={(event) => setBookProgressInput(event.target.value)} placeholder={bookMode === "page" ? "Page *" : "Percent *"} style={pillControlStyle(theme)} />
+                      <input value={bookProgressInput} onChange={(event) => setBookProgressInput(event.target.value)} placeholder={bookMode === "page" ? "Page *" : "Percent *"} style={{ ...pillControlStyle(theme), flex: "1 1 180px", minWidth: 130 }} />
                       <button type="button" onClick={() => setBookMode((prev) => prev === "page" ? "percent" : "page")} style={{ ...pillControlStyle(theme), cursor: "pointer", padding: "9px 12px" }}>
                         {bookMode === "page" ? "Page #" : "%"}
                       </button>
@@ -268,9 +275,10 @@ export const PostComposerSheet = ({
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={async () => {
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
                     if (!catalogItemId) {
                       setError("Title is required.");
                       return;
@@ -307,11 +315,12 @@ export const PostComposerSheet = ({
                     setTenorGifUrl("");
                     setAttachments([]);
                     onClose();
-                  }}
-                  style={{ ...pillControlStyle(theme), background: `linear-gradient(180deg, ${theme.colors.accent} 0%, ${theme.colors.accent}CC 100%)`, color: theme.colors.surface, borderColor: `${theme.colors.accent}AA`, cursor: "pointer", padding: "10px 14px" }}
-                >
-                  {`Post to ${groupId ? (groups.find((entry) => entry.id === groupId)?.label ?? "group") : postAudienceLabel}`}
-                </button>
+                    }}
+                    style={{ ...pillControlStyle(theme), background: `linear-gradient(180deg, ${theme.colors.accent} 0%, ${theme.colors.accent}CC 100%)`, color: theme.colors.surface, borderColor: `${theme.colors.accent}AA`, cursor: "pointer", padding: "10px 14px", whiteSpace: "nowrap" }}
+                  >
+                    {groupId ? "Post to group" : "Post to public"}
+                  </button>
+                </div>
               </div>
 
               {tenorResults.length ? (
