@@ -930,6 +930,7 @@ export const App = () => {
           width: "100%",
           minHeight: "100vh",
           background: theme.colors.surface,
+          color: theme.colors.textPrimary,
           overflow: "hidden",
           display: "grid",
           gridTemplateRows: "auto 1fr"
@@ -1132,6 +1133,29 @@ export const App = () => {
                     <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedGroupId) {
+                      return;
+                    }
+                    openCatalogSearch({ mode: "group", groupId: selectedGroupId });
+                  }}
+                  disabled={!selectedGroupId}
+                  style={{
+                    border: `1px solid ${theme.colors.border}`,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background: theme.colors.surface,
+                    color: theme.colors.textPrimary,
+                    cursor: selectedGroupId ? "pointer" : "not-allowed",
+                    textAlign: "left",
+                    marginTop: spacingTokens.sm,
+                    opacity: selectedGroupId ? 1 : 0.65
+                  }}
+                >
+                  + Add title to group
+                </button>
               </>
             ) : null}
           </aside>
@@ -1189,13 +1213,6 @@ export const App = () => {
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacingTokens.sm, marginBottom: spacingTokens.md }}>
                     <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{selectedGroup.name}</h3>
-                    <button
-                      type="button"
-                      onClick={() => openCatalogSearch({ mode: "group", groupId: selectedGroupId! })}
-                      style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, padding: "6px 12px", background: theme.colors.surface, cursor: "pointer" }}
-                    >
-                      Add title to group
-                    </button>
                   </div>
                   <PublicFeedScreen
                     theme={theme}
