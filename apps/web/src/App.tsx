@@ -1087,12 +1087,17 @@ export const App = () => {
     const request = willReact
       ? supabaseClient
           .from("post_reactions")
-          .upsert({ post_id: Number(postId), user_id: currentUser.id, emoji: "heart" }, { onConflict: "post_id,user_id" })
+          .upsert(
+            { post_id: Number(postId), user_id: currentUser.id, emoji: "heart" },
+            { onConflict: "post_id,user_id", ignoreDuplicates: false }
+          )
+          .select("post_id")
       : supabaseClient
           .from("post_reactions")
           .delete()
           .eq("post_id", Number(postId))
-          .eq("user_id", currentUser.id);
+          .eq("user_id", currentUser.id)
+          .select("post_id");
 
     const { error } = await request;
 
