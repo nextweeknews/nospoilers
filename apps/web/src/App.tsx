@@ -1037,8 +1037,8 @@ export const App = () => {
         <main
           style={{
             display: "grid",
-            gridTemplateColumns: "270px 270px minmax(420px, 760px) 220px",
-            justifyContent: "center",
+            gridTemplateColumns: "320px 320px minmax(420px, 1fr) 220px",
+            justifyContent: "start",
             minHeight: 0,
             background: theme.colors.background
           }}
@@ -1578,7 +1578,15 @@ const SidebarItemContent = ({
   const fallbackText = iconText || fallbackIcon;
 
   return (
-    <span style={{ display: "grid", gridTemplateColumns: "24px minmax(0, 1fr)", alignItems: "center", columnGap: spacingTokens.sm }}>
+    <span
+      style={{
+        display: "grid",
+        gridTemplateColumns: "24px minmax(0, 1fr)",
+        alignItems: "center",
+        columnGap: spacingTokens.sm,
+        width: "100%"
+      }}
+    >
       {imageSrc ? (
         <img
           src={imageSrc}
@@ -1592,17 +1600,31 @@ const SidebarItemContent = ({
       ) : (
         <img src={DEFAULT_COVER_PLACEHOLDER} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: "cover", border: `1px solid ${theme.colors.border}` }} />
       )}
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          lineHeight: 1.3
+        }}
+      >
+        {label}
+      </span>
     </span>
   );
 };
 
 const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, hovered = false): CSSProperties => ({
   ...menuItem(theme),
-  padding: "11px 14px",
+  padding: "12px 14px",
   fontSize: 16,
   fontWeight: 500,
   borderRadius: radiusTokens.sm,
+  minHeight: 64,
+  display: "flex",
+  alignItems: "center",
   background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : "transparent",
   color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
   transition: "background-color 120ms ease, color 120ms ease"
