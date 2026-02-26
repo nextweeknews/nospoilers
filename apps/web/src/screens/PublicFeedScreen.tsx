@@ -6,6 +6,7 @@ type FeedPost = {
   created_at: string;
   authorDisplayName: string;
   authorAvatarUrl?: string;
+  catalogItemTitle?: string;
 };
 
 type PublicFeedScreenProps = {
@@ -16,6 +17,7 @@ type PublicFeedScreenProps = {
   title?: string;
   loadingMessage?: string;
   emptyMessage?: string;
+  showCatalogContext?: boolean;
 };
 
 const formatRelativeTimestamp = (createdAt: string, nowMs: number = Date.now()): string => {
@@ -49,7 +51,8 @@ export const PublicFeedScreen = ({
   posts,
   title = "For You",
   loadingMessage = "Loading public posts…",
-  emptyMessage = "No public posts yet."
+  emptyMessage = "No public posts yet.",
+  showCatalogContext = true
 }: PublicFeedScreenProps) => (
   <section style={{ display: "grid", gap: spacingTokens.sm }}>
     <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{title}</h3>
@@ -76,6 +79,9 @@ export const PublicFeedScreen = ({
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs }}>
             <strong style={{ color: theme.colors.textPrimary }}>{post.authorDisplayName}</strong>
+            {showCatalogContext && post.catalogItemTitle ? (
+              <small style={{ color: theme.colors.textSecondary }}>{`> ${post.catalogItemTitle}`}</small>
+            ) : null}
             <small style={{ color: theme.colors.textSecondary }}>{formatRelativeTimestamp(post.created_at)}</small>
           </div>
           <p style={{ margin: 0, color: theme.colors.textPrimary, whiteSpace: "pre-wrap" }}>{post.previewText ?? "(No text)"}</p>

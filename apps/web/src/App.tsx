@@ -46,6 +46,7 @@ type PostEntity = SupabasePostRow & {
   previewText: string | null;
   authorDisplayName: string;
   authorAvatarUrl?: string;
+  catalogItemTitle?: string;
 };
 
 type OptionRow = { id: string; title: string };
@@ -454,7 +455,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
+            .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title)")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -474,7 +475,9 @@ export const App = () => {
                 authorAvatarUrl:
                   mapAvatarPathToUiValue(
                     (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
-                  ) ?? DEFAULT_AVATAR_PLACEHOLDER
+                  ) ?? DEFAULT_AVATAR_PLACEHOLDER,
+                catalogItemTitle:
+                  (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined
               }))
             );
           }
@@ -608,7 +611,7 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,group_id,users!posts_author_user_id_fkey(display_name,username,avatar_path)")
+        .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title)")
         .eq("status", "published")
         .is("deleted_at", null)
         .is("group_id", null)
@@ -629,7 +632,9 @@ export const App = () => {
           authorAvatarUrl:
             mapAvatarPathToUiValue(
               (post as SupabasePostRow & { users?: { avatar_path?: string | null } | null }).users?.avatar_path
-            ) ?? DEFAULT_AVATAR_PLACEHOLDER
+            ) ?? DEFAULT_AVATAR_PLACEHOLDER,
+          catalogItemTitle:
+            (post as SupabasePostRow & { catalog_items?: { title?: string | null } | null }).catalog_items?.title?.trim() || undefined
         }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
@@ -1149,7 +1154,7 @@ export const App = () => {
               )
             ) : null}
 
-            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} /> : null}
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} /> : null}
 
             {mainView === "groups" ? (
               selectedGroup ? (
@@ -1172,6 +1177,7 @@ export const App = () => {
                     title={`${selectedGroup.name} Feed`}
                     loadingMessage="Loading group posts…"
                     emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
+                    showCatalogContext={!selectedGroupCatalogItemId}
                   />
                 </>
               ) : (

@@ -21,6 +21,7 @@ export type SupabasePostRow = {
   status: string;
   deleted_at: string | null;
   group_id: string | null;
+  catalog_item_id: string | null;
 };
 
 export type PostAudienceSelection = {
