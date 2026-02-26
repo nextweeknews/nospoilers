@@ -203,7 +203,8 @@ const toUiResultFromEdge = (raw: EdgeFunctionSearchResult): CatalogSearchResult 
   const itemType = isCatalogItemType(raw.item_type) ? raw.item_type : null;
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
   const sourceId = typeof raw.source_id === "string" ? raw.source_id : "";
-  const provider = normalizeSource(raw.provider);
+  const rawProvider = raw.provider ?? raw.metadata_source;
+  const provider = normalizeSource(rawProvider);
 
   if (!itemType || !title || !sourceId) {
     return null;
@@ -348,9 +349,6 @@ const parseImportResponse = async (response: Response): Promise<CatalogImportRes
   }
   return json as CatalogImportResponse;
 };
-
-const rawProvider = raw.provider ?? raw.metadata_source;
-const provider = normalizeSource(rawProvider);
 
 const loadRecentSearches = (): string[] => {
   try {
