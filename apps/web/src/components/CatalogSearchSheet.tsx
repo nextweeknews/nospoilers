@@ -297,14 +297,16 @@ const parseErrorMessageFromJson = (json: unknown, fallback: string): string => {
 
 const parseNumericPageCount = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+    const n = Math.trunc(value);
+    return n >= 0 ? n : null;
   }
   if (typeof value === "string") {
     const normalized = value.replace(/,/g, "").trim();
     if (!normalized) return null;
     const parsed = Number(normalized);
     if (Number.isFinite(parsed)) {
-      return parsed;
+      const n = Math.trunc(parsed);
+      return n >= 0 ? n : null;
     }
   }
   return null;
@@ -312,6 +314,33 @@ const parseNumericPageCount = (value: unknown): number | null => {
 
 const extractPageCount = (metadata: Record<string, unknown> | undefined): number | null => {
   if (!metadata) return null;
+
+  // Common shapes:
+  // 1) Your current search-catalog: metadata.page_count
+  // 2) Raw Google Books: metadata.volumeInfo.pageCount (or metadata.volumeInfo.pageCount as string)
+  // 3) Some sources: metadata.pageCount / number_of_pages / pages
+  const volumeInfo =
+    metadata.volumeInfo && typeof metadata.volumeInfo === "object"
+      ? (metadata.volumeInfo as Record<string, unknown>)
+      : undefined;
+
+  const candidates = [
+    metadata.page_count,
+    metadata.pageCount,
+    metadata.number_of_pages,
+    metadata.pages,
+    volumeInfo?.pageCount,
+    // Sometimes google books pageCount is under "page_count" too, depending on normalization
+    volumeInfo?.page_count
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = parseNumericPageCount(candidate);
+    if (parsed !== null) return parsed;
+  }
+
+  return null;
+};
 
   const volumeInfo =
     metadata.volumeInfo && typeof metadata.volumeInfo === "object"
