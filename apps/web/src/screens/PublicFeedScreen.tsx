@@ -78,16 +78,18 @@ export const PublicFeedScreen = ({
           loading="lazy"
         />
         <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "wrap" }}>
-            <strong style={{ color: theme.colors.textPrimary, fontWeight: 600 }}>{post.authorDisplayName}</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, flexWrap: "nowrap", minWidth: 0 }}>
+            <strong style={{ color: theme.colors.textPrimary, fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
+              {post.authorDisplayName}
+            </strong>
             {showCatalogContext && post.catalogItemTitle ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
                 <span
                   aria-hidden="true"
                   style={{
                     display: "inline-block",
-                    width: 12,
-                    height: 12,
+                    width: 6,
+                    height: 6,
                     backgroundColor: theme.colors.textSecondary,
                     maskImage: "url('/graphics/rightarrow.svg')",
                     maskRepeat: "no-repeat",
@@ -99,12 +101,24 @@ export const PublicFeedScreen = ({
                     WebkitMaskSize: "contain"
                   }}
                 />
-                <span style={{ color: theme.colors.textPrimary, fontSize: "inherit", fontWeight: 600 }}>
+                <span
+                  style={{
+                    color: theme.colors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    minWidth: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis"
+                  }}
+                >
                   {post.catalogItemTitle}
                 </span>
               </span>
             ) : null}
-            <small style={{ color: theme.colors.textSecondary }}>{formatRelativeTimestamp(post.created_at)}</small>
+            <small style={{ color: theme.colors.textSecondary, marginLeft: "auto", flexShrink: 0 }}>
+              {formatRelativeTimestamp(post.created_at)}
+            </small>
           </div>
           {post.progressLine ? (
             <span
