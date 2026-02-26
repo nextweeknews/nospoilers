@@ -60,7 +60,14 @@ export const PublicFeedScreen = ({
   showCatalogContext = true,
 }: PublicFeedScreenProps) => {
   const renderTimestamp = (createdAt: string) => (
-    <small style={{ color: theme.colors.textSecondary, flexShrink: 0 }}>
+    <small
+      style={{
+        color: theme.colors.textSecondary,
+        flexShrink: 0,
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+    >
       {formatRelativeTimestamp(createdAt)}
     </small>
   );
