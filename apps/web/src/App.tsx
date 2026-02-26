@@ -44,10 +44,12 @@ type GroupEntity = SupabaseGroupRow;
 
 type PostEntity = SupabasePostRow & {
   previewText: string | null;
+  isSpoilerHidden?: boolean;
   authorDisplayName: string;
   authorAvatarUrl?: string;
   catalogItemTitle?: string;
   progressLine?: string;
+  catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
 };
 
 type OptionRow = { id: string; title: string };
@@ -59,7 +61,7 @@ type GroupCatalogItem = {
   coverImageUrl?: string;
 };
 
-type TrendingTimeframe = "24h" | "7d" | "30d";
+type TrendingTimeframe = "all_time";
 type TrendingTypeFilter = "all" | "book" | "tv_show";
 
 type TrendingItem = {
@@ -101,9 +103,7 @@ const FOR_YOU_ICON = "✦";
 const GROUP_FALLBACK_ICON = "👥";
 
 const TRENDING_COUNT_FIELDS: Record<TrendingTimeframe, string[]> = {
-  "24h": ["count_24h", "adds_24h", "last_24h_count"],
-  "7d": ["count_7d", "adds_7d", "last_7d_count"],
-  "30d": ["count_30d", "adds_30d", "last_30d_count"]
+  all_time: ["count_all_time", "adds_all_time", "all_time_count", "lifetime_count"]
 };
 
 const getTrendingCountForRow = (row: Record<string, unknown>, timeframe: TrendingTimeframe): number => {
@@ -151,6 +151,32 @@ const formatPostProgressLine = (post: SupabasePostRow & {
   const episodeTitle = unit.title?.trim();
   return `S${unit.season_number}, E${unit.episode_number}${episodeTitle ? ` - ${episodeTitle}` : ""}`;
 };
+
+const hasReachedPostProgress = (post: PostEntity, shelfItem: ShelfItem): boolean => {
+  if (shelfItem.status === "completed") return true;
+
+  if (typeof post.book_page === "number") {
+    return typeof shelfItem.currentPage === "number" && shelfItem.currentPage >= post.book_page;
+  }
+
+  if (typeof post.book_percent === "number") {
+    return typeof shelfItem.progressPercentValue === "number" && shelfItem.progressPercentValue >= post.book_percent;
+  }
+
+  const unit = Array.isArray(post.catalog_progress_units) ? post.catalog_progress_units[0] : post.catalog_progress_units;
+  const targetSeason = typeof unit?.season_number === "number" ? unit.season_number : null;
+  const targetEpisode = typeof unit?.episode_number === "number" ? unit.episode_number : null;
+  if (targetSeason == null || targetEpisode == null) return true;
+
+  const currentSeason = shelfItem.currentSeasonNumber;
+  const currentEpisode = shelfItem.currentEpisodeNumber;
+  if (typeof currentSeason !== "number" || typeof currentEpisode !== "number") return false;
+  if (currentSeason > targetSeason) return true;
+  if (currentSeason < targetSeason) return false;
+  return currentEpisode >= targetEpisode;
+};
+
+const SPOILER_HIDDEN_MESSAGE = "⚠️ Spoiler warning: progress not reached yet. Advance further in this title to reveal this post.";
 
 const mapUser = (user: User, session: Session): AuthUser => ({
   id: user.id,
@@ -255,7 +281,7 @@ export const App = () => {
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
-  const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("7d");
+  const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("all_time");
   const [trendingTypeFilter, setTrendingTypeFilter] = useState<TrendingTypeFilter>("all");
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
   const [trendingStatus, setTrendingStatus] = useState<LoadStatus>("loading");
@@ -805,7 +831,7 @@ export const App = () => {
 
       const [groupResult, userResult] = await Promise.all([
         supabaseClient.from("catalog_item_group_add_counts").select("*").limit(400),
-        supabaseClient.from("catalog_item_user_add_counts").select("*").eq("user_id", currentUser.id).limit(400)
+        supabaseClient.from("catalog_item_user_add_counts").select("*").limit(400)
       ]);
 
       if (cancelled) return;
@@ -931,8 +957,26 @@ export const App = () => {
   const selectedGroupCatalogItems = selectedGroupId
     ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
     : [];
+  const shelfItemsByCatalogId = useMemo(() => new Map(shelfItems.map((item) => [item.catalogItemId, item])), [shelfItems]);
+  const applyViewerPostVisibility = (candidatePosts: PostEntity[]): PostEntity[] =>
+    candidatePosts.reduce<PostEntity[]>((acc, post) => {
+      const catalogItemId = String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "");
+      if (!catalogItemId) return acc;
+      const shelfItem = shelfItemsByCatalogId.get(catalogItemId);
+      if (!shelfItem) return acc;
+      if (hasReachedPostProgress(post, shelfItem)) {
+        acc.push({ ...post, isSpoilerHidden: false });
+        return acc;
+      }
+      acc.push({ ...post, isSpoilerHidden: true, previewText: SPOILER_HIDDEN_MESSAGE });
+      return acc;
+    }, []);
+
+  const visibleGroupPosts = useMemo(() => applyViewerPostVisibility(groupPosts), [groupPosts, shelfItemsByCatalogId]);
+  const visiblePublicPosts = useMemo(() => applyViewerPostVisibility(posts), [posts, shelfItemsByCatalogId]);
+
   const selectedGroupPosts = selectedGroupId
-    ? groupPosts.filter((post) => {
+    ? visibleGroupPosts.filter((post) => {
         const inGroup = String((post as { group_id?: string | number | null }).group_id ?? "") === selectedGroupId;
         if (!inGroup) return false;
         if (!selectedGroupCatalogItemId) return true;
@@ -940,10 +984,10 @@ export const App = () => {
       })
     : [];
   const selectedShelfPosts = selectedShelfCatalogItemId
-    ? posts.filter(
+    ? visiblePublicPosts.filter(
         (post) => String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "") === selectedShelfCatalogItemId
       )
-    : posts;
+    : visiblePublicPosts;
   const selectedShelfItem = selectedShelfCatalogItemId
     ? shelfItems.find((item) => item.catalogItemId === selectedShelfCatalogItemId)
     : undefined;
@@ -1563,9 +1607,7 @@ export const App = () => {
                   <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 12 }}>
                     Timeframe
                     <select value={trendingTimeframe} onChange={(event) => setTrendingTimeframe(event.target.value as TrendingTimeframe)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: theme.colors.surface, color: theme.colors.textPrimary }}>
-                      <option value="24h">24 hours</option>
-                      <option value="7d">7 days</option>
-                      <option value="30d">30 days</option>
+                      <option value="all_time">All-time</option>
                     </select>
                   </label>
                   <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 12 }}>
