@@ -53,6 +53,19 @@ type PostEntity = SupabasePostRow & {
 
 type OptionRow = { id: string; title: string };
 
+type ShelfItem = {
+  catalogItemId: string;
+  title: string;
+  status: string;
+  progressLabel: string;
+};
+
+type GroupCatalogItem = {
+  groupId: string;
+  catalogItemId: string;
+  title: string;
+};
+
 type CatalogSearchContext =
   | { mode: "post" }
   | { mode: "group"; groupId: string }
@@ -182,6 +195,9 @@ export const App = () => {
   const [progressUnits, setProgressUnits] = useState<OptionRow[]>([]);
   const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
+  const [groupCatalogItems, setGroupCatalogItems] = useState<GroupCatalogItem[]>([]);
+  const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -275,7 +291,9 @@ export const App = () => {
       context: catalogSearchContext
     });
 
-    closeCatalogSearch();
+    if (catalogSearchContext?.mode === "post") {
+      closeCatalogSearch();
+    }
   };
 
   const pathname = window.location.pathname;
@@ -363,6 +381,9 @@ export const App = () => {
       setFeedStatus("loading");
       setGroupError(undefined);
       setFeedError(undefined);
+      setShelfItems([]);
+      setGroupCatalogItems([]);
+      setSelectedGroupCatalogItemId(null);
       return;
     }
 
@@ -373,6 +394,8 @@ export const App = () => {
       setFeedStatus("loading");
       setGroupError(undefined);
       setFeedError(undefined);
+
+      let activeGroupIds: string[] = [];
 
       const groupResult = await supabaseClient
         .from("group_memberships")
@@ -401,6 +424,7 @@ export const App = () => {
         setSelectedGroupId((current) => (current && !loadedGroups.some((group) => group.id === current) ? null : current));
 
         const groupIds = loadedGroups.map((group) => group.id);
+        activeGroupIds = groupIds.map((groupId) => String(groupId));
         if (!groupIds.length) {
           setGroupPosts([]);
         } else {
@@ -431,6 +455,50 @@ export const App = () => {
             );
           }
         }
+      }
+
+      const shelfResult = await supabaseClient
+        .from("user_media_progress")
+        .select("catalog_item_id,status,current_sequence_index,catalog_items!user_media_progress_catalog_item_id_fkey(title)")
+        .eq("user_id", currentUser.id)
+        .order("updated_at", { ascending: false });
+
+      if (shelfResult.error) {
+        console.error("[app] user_media_progress load failed", shelfResult.error);
+        setShelfItems([]);
+      } else {
+        setShelfItems(
+          (((shelfResult.data as Array<{ catalog_item_id: string | number; status: string; current_sequence_index: number; catalog_items?: { title?: string | null } | null }> | null) ?? [])).map((row) => ({
+            catalogItemId: String(row.catalog_item_id),
+            title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+            status: row.status,
+            progressLabel: `Unit ${row.current_sequence_index}`
+          }))
+        );
+      }
+
+      if (activeGroupIds.length) {
+        const groupCatalogResult = await supabaseClient
+          .from("group_catalog_items")
+          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title)")
+          .in("group_id", activeGroupIds)
+          .eq("is_active", true)
+          .order("added_at", { ascending: false });
+
+        if (groupCatalogResult.error) {
+          console.error("[app] group_catalog_items load failed", groupCatalogResult.error);
+          setGroupCatalogItems([]);
+        } else {
+          setGroupCatalogItems(
+            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null } | null }> | null) ?? [])).map((row) => ({
+              groupId: String(row.group_id),
+              catalogItemId: String(row.catalog_item_id),
+              title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`
+            }))
+          );
+        }
+      } else {
+        setGroupCatalogItems([]);
       }
 
       const postResult = await supabaseClient
@@ -556,8 +624,18 @@ export const App = () => {
 
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
 
-  const selectedGroup = selectedGroupId ? groups.find((group) => group.id === selectedGroupId) : undefined;
-  const selectedGroupPosts = selectedGroupId ? groupPosts.filter((post) => (post as { group_id?: string | null }).group_id === selectedGroupId) : [];
+  const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
+  const selectedGroupCatalogItems = selectedGroupId
+    ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
+    : [];
+  const selectedGroupPosts = selectedGroupId
+    ? groupPosts.filter((post) => {
+        const inGroup = String((post as { group_id?: string | number | null }).group_id ?? "") === selectedGroupId;
+        if (!inGroup) return false;
+        if (!selectedGroupCatalogItemId) return true;
+        return String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "") === selectedGroupCatalogItemId;
+      })
+    : [];
 
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
@@ -885,6 +963,7 @@ export const App = () => {
                   user={currentUser}
                   onEditProfile={() => setShowProfileSettings(true)}
                   onAccountSettings={() => setShowProfileSettings(true)}
+                  shelfItems={shelfItems}
                 />
                 <button
                   type="button"
@@ -912,7 +991,7 @@ export const App = () => {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() => setSelectedGroupId(null)}
+                      onClick={() => { setSelectedGroupId(null); setSelectedGroupCatalogItemId(null); }}
                       style={{
                         justifySelf: "start",
                         border: `1px solid ${theme.colors.border}`,
@@ -941,21 +1020,43 @@ export const App = () => {
                       Add book / show
                     </button>
                   </div>
-                  <PublicFeedScreen
-                    theme={theme}
-                    status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
-                    errorMessage={groupError}
-                    posts={selectedGroupPosts}
-                    title={`${selectedGroup.name} Feed`}
-                    loadingMessage="Loading group posts…"
-                    emptyMessage="No posts in this group yet."
-                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(120px, 0.45fr) minmax(0, 1fr)", gap: spacingTokens.sm }}>
+                    <aside style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, background: theme.colors.surface, padding: spacingTokens.sm, display: "grid", gap: 6, alignContent: "start", height: "fit-content" }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGroupCatalogItemId(null)}
+                        style={{ textAlign: "left", border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: selectedGroupCatalogItemId ? "transparent" : `${theme.colors.accent}14`, color: selectedGroupCatalogItemId ? theme.colors.textPrimary : theme.colors.accent, cursor: "pointer" }}
+                      >
+                        Home
+                      </button>
+                      {selectedGroupCatalogItems.map((item) => (
+                        <button
+                          key={`${item.groupId}-${item.catalogItemId}`}
+                          type="button"
+                          onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
+                          style={{ textAlign: "left", border: `1px solid ${theme.colors.border}`, borderRadius: 8, padding: "6px 8px", background: selectedGroupCatalogItemId === item.catalogItemId ? `${theme.colors.accent}14` : "transparent", color: selectedGroupCatalogItemId === item.catalogItemId ? theme.colors.accent : theme.colors.textPrimary, cursor: "pointer" }}
+                        >
+                          {item.title}
+                        </button>
+                      ))}
+                    </aside>
+
+                    <PublicFeedScreen
+                      theme={theme}
+                      status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
+                      errorMessage={groupError}
+                      posts={selectedGroupPosts}
+                      title={`${selectedGroup.name} Feed`}
+                      loadingMessage="Loading group posts…"
+                      emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
+                    />
+                  </div>
                 </>
               ) : (
                 <>
                   <GroupScreen
                     groups={groups.map((group) => ({
-                      id: group.id,
+                      id: String(group.id),
                       name: group.name,
                       description: group.description,
                       coverUrl: mapAvatarPathToUiValue(group.avatar_path)
@@ -964,7 +1065,7 @@ export const App = () => {
                     errorMessage={groupError}
                     theme={theme}
                     onCreateGroup={() => setShowCreateGroupSheet(true)}
-                    onSelectGroup={setSelectedGroupId}
+                    onSelectGroup={(groupId) => { setSelectedGroupId(groupId); setSelectedGroupCatalogItemId(null); }}
                   />
                   <small style={{ color: theme.colors.textSecondary }}>Group feed posts: {groupPosts.length}</small>
                 </>
@@ -996,7 +1097,7 @@ export const App = () => {
       <PostComposerSheet
         open={showCreatePostSheet}
         theme={theme}
-        groups={groups.map((group) => ({ id: group.id, label: group.name }))}
+        groups={groups.map((group) => ({ id: String(group.id), label: group.name }))}
         catalogItems={(() => {
           const base = catalogItems.map((entry) => ({ id: entry.id, label: entry.title }));
           if (!pendingPostCatalogSelection) return base;
@@ -1077,8 +1178,57 @@ export const App = () => {
           theme={theme}
           mode={catalogSearchContext.mode}
           groupId={catalogSearchContext.mode === "group" ? Number(catalogSearchContext.groupId) : undefined}
+          selectionBehavior="import"
+          availableGroups={groups.map((group) => ({ id: String(group.id), name: group.name }))}
           onClose={closeCatalogSearch}
           onImported={handleCatalogImported}
+          onAddToShelf={async (imported) => {
+            if (!currentUser) return;
+            const catalogItemId = imported.catalog_item.id;
+            const { error } = await supabaseClient.from("user_media_progress").upsert(
+              {
+                user_id: currentUser.id,
+                catalog_item_id: catalogItemId,
+                status: "in_progress",
+                current_sequence_index: 0,
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: "user_id,catalog_item_id" }
+            );
+
+            if (error) {
+              setCatalogSearchError(error.message);
+              return;
+            }
+
+            setShelfItems((prev) => {
+              const next = prev.filter((entry) => entry.catalogItemId !== String(catalogItemId));
+              return [{ catalogItemId: String(catalogItemId), title: imported.catalog_item.title, status: "in_progress", progressLabel: "Unit 0" }, ...next];
+            });
+          }}
+          onAddToGroup={async (imported, _selected, groupId) => {
+            if (!currentUser) return;
+            const catalogItemId = imported.catalog_item.id;
+            const { error } = await supabaseClient.from("group_catalog_items").upsert(
+              {
+                group_id: groupId,
+                catalog_item_id: catalogItemId,
+                added_by_user_id: currentUser.id,
+                is_active: true
+              },
+              { onConflict: "group_id,catalog_item_id" }
+            );
+
+            if (error) {
+              setCatalogSearchError(error.message);
+              return;
+            }
+
+            setGroupCatalogItems((prev) => {
+              const next = prev.filter((entry) => !(entry.groupId === String(groupId) && entry.catalogItemId === String(catalogItemId)));
+              return [{ groupId: String(groupId), catalogItemId: String(catalogItemId), title: imported.catalog_item.title }, ...next];
+            });
+          }}
           onError={(message) => {
             setCatalogSearchError(message);
             console.error("[app] catalog search/import failed", message);
