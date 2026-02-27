@@ -1,4 +1,5 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { DotsHorizontalIcon, FaceIcon, PlusIcon } from "@radix-ui/react-icons";
 import { AlertDialog, Avatar, Box, Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
@@ -178,8 +179,7 @@ export const PublicFeedScreen = ({
                 alt={`${post.authorDisplayName} avatar`}
               />
               <Box style={{ display: "grid", gap: 2, width: "100%", minWidth: 0, position: "relative" }}>
-                {isPostHovered || isMenuOpen ? (
-                  <Box style={{ position: "absolute", top: 0, right: 0 }}>
+                <Box style={{ position: "absolute", top: 0, right: 0 }}>
                     {/* Keep the menu open state controlled so it stays visible until a user action closes it. */}
                     <DropdownMenu.Root
                       open={isMenuOpen}
@@ -204,44 +204,15 @@ export const PublicFeedScreen = ({
                           cursor: "pointer",
                         }}
                       >
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 15 15"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path d="M8.625 2.5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Z" />
-                          </svg>
+                        <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
                         </DropdownMenu.Trigger>
                       <DropdownMenu.Content>
-                        {mode === "public" ? (
-                          <DropdownMenu.Item onSelect={() => onSharePost?.(String(post.id))}>
-                            Share post
-                          </DropdownMenu.Item>
-                        ) : null}
-                        <DropdownMenu.Item onSelect={() => onReportPost?.(String(post.id))}>
-                          Report post
-                        </DropdownMenu.Item>
-                        {post.canDelete ? (
-                          <>
-                            {/* Keep destructive actions visually separated so users can scan the menu safely. */}
-                            <DropdownMenu.Separator />
-                            <DropdownMenu.Item
-                              color="red"
-                              onSelect={() => {
-                                // Keep deletion behind a confirmation dialog so a single menu tap cannot remove content by mistake.
-                                setPendingDeletePostId(String(post.id));
-                              }}
-                            >
-                              Delete post
-                            </DropdownMenu.Item>
-                          </>
-                        ) : null}
+                        <DropdownMenu.Item style={{ color: "#fff" }}>Share group</DropdownMenu.Item>
+                        <DropdownMenu.Item color="red">Leave group</DropdownMenu.Item>
+                        <DropdownMenu.Item color="red">Report group</DropdownMenu.Item>
                       </DropdownMenu.Content>
                     </DropdownMenu.Root>
                   </Box>
-                ) : null}
 
                 <Flex align="center" gap="2" style={{ flexWrap: "nowrap", minWidth: 0, paddingRight: 24 }}>
                   <Text weight="bold" size="2" style={{ color: theme.colors.textPrimary, flexShrink: 0 }}>
@@ -334,13 +305,22 @@ export const PublicFeedScreen = ({
                       onClick={() => setPickerForPostId((cur) => (cur === String(post.id) ? null : String(post.id)))}
                       onMouseEnter={() => setHoveredGroupAddPostId(String(post.id))}
                       onMouseLeave={() => setHoveredGroupAddPostId((current) => (current === String(post.id) ? null : current))}
+                      // Match the same border/text transition language as the heart react button so reaction controls feel consistent.
                       style={{
-                        borderColor: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.border,
-                        color: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.textSecondary,
+                        borderColor:
+                          hoveredGroupAddPostId === String(post.id) || pickerForPostId === String(post.id)
+                            ? theme.colors.accent
+                            : theme.colors.border,
+                        color:
+                          hoveredGroupAddPostId === String(post.id) || pickerForPostId === String(post.id)
+                            ? theme.colors.accent
+                            : theme.colors.textSecondary,
                       }}
                       aria-label="Add reaction"
                     >
-                      +
+                      {/* Pair face + plus icons so the control reads as "add emoji reaction" without relying on text. */}
+                      <FaceIcon width={12} height={12} aria-hidden="true" />
+                      <PlusIcon width={12} height={12} aria-hidden="true" />
                     </Button>
 
                     {pickerForPostId === String(post.id) ? (

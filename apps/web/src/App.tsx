@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { DotsHorizontalIcon } from "@radix-ui/react-icons";
 import { AlertDialog, Box, Button, Card, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
@@ -342,6 +343,8 @@ export const App = () => {
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
+  const [hoveredGroupMenuId, setHoveredGroupMenuId] = useState<string | null>(null);
+  const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
   const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("all_time");
   const [trendingTypeFilter, setTrendingTypeFilter] = useState<TrendingTypeFilter>("all");
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
@@ -1741,7 +1744,7 @@ export const App = () => {
             background: theme.colors.background
           }}
         >
-          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs, borderRight: `1px solid ${theme.colors.border}` }}>
+          <aside style={{ overflowY: "auto", padding: 0, display: "grid", alignContent: "start", gap: 0, borderRight: `1px solid ${theme.colors.border}` }}>
             <button
               type="button"
               onClick={() => { setMainView("for-you"); setSelectedGroupId(null); setSelectedShelfCatalogItemId(null); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
@@ -1751,25 +1754,68 @@ export const App = () => {
             >
               <SidebarItemContent label="For you" iconText={FOR_YOU_ICON} theme={theme} />
             </button>
-            <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 14px" }}>Your groups</strong>
+            <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 18px" }}>Your groups</strong>
             {groups.map((group) => {
               const active = mainView === "groups" && selectedGroupId === String(group.id);
+              const groupMenuId = String(group.id);
+              const isGroupMenuOpen = openGroupMenuId === groupMenuId;
+              const isGroupMenuHovered = hoveredGroupMenuId === groupMenuId;
+
               return (
-                <button
+                <div
                   key={group.id}
-                  type="button"
-                  onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
                   onMouseEnter={() => setHoveredSidebarItemKey(`group-${group.id}`)}
                   onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-${group.id}` ? null : current)}
                   style={listItemStyle(theme, active, hoveredSidebarItemKey === `group-${group.id}`)}
                 >
-                  <SidebarItemContent
-                    label={group.name}
-                    avatarUrl={mapAvatarPathToUiValue(group.avatar_path) ?? undefined}
-                    fallbackIcon={GROUP_FALLBACK_ICON}
-                    theme={theme}
-                  />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
+                    style={{ ...sidebarRowButtonReset, color: "inherit" }}
+                  >
+                    <SidebarItemContent
+                      label={group.name}
+                      avatarUrl={mapAvatarPathToUiValue(group.avatar_path) ?? undefined}
+                      fallbackIcon={GROUP_FALLBACK_ICON}
+                      theme={theme}
+                    />
+                  </button>
+                  <DropdownMenu.Root
+                    open={isGroupMenuOpen}
+                    onOpenChange={(nextOpen) => setOpenGroupMenuId(nextOpen ? groupMenuId : null)}
+                  >
+                    {/* The menu trigger appears while a row is hovered and stays accent-colored while open so state is clear. */}
+                    <DropdownMenu.Trigger
+                      aria-label={`Open ${group.name} options`}
+                      onMouseEnter={() => setHoveredGroupMenuId(groupMenuId)}
+                      onMouseLeave={() => {
+                        setHoveredGroupMenuId((current) =>
+                          current === groupMenuId ? null : current,
+                        );
+                      }}
+                      style={{
+                        ...sidebarIconButtonReset,
+                        opacity:
+                          hoveredSidebarItemKey === `group-${group.id}` ||
+                          isGroupMenuHovered ||
+                          isGroupMenuOpen
+                            ? 1
+                            : 0,
+                        color:
+                          isGroupMenuHovered || isGroupMenuOpen
+                            ? theme.colors.accent
+                            : theme.colors.textSecondary,
+                      }}
+                    >
+                      <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="end">
+                      <DropdownMenu.Item style={{ color: "#fff" }}>Share group</DropdownMenu.Item>
+                      <DropdownMenu.Item color="red">Leave group</DropdownMenu.Item>
+                      <DropdownMenu.Item color="red">Report group</DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Root>
+                </div>
               );
             })}
             <button
@@ -1781,7 +1827,7 @@ export const App = () => {
             </button>
           </aside>
 
-          <aside style={{ overflowY: "auto", padding: spacingTokens.md, display: "grid", alignContent: "start", gap: spacingTokens.xs, borderRight: `1px solid ${theme.colors.border}` }}>
+          <aside style={{ overflowY: "auto", padding: 0, display: "grid", alignContent: "start", gap: 0, borderRight: `1px solid ${theme.colors.border}` }}>
             {mainView === "for-you" ? (
               <>
                 <button
@@ -2334,9 +2380,33 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   background: "transparent",
   color: theme.colors.textPrimary,
   textAlign: "left",
-  padding: "10px 14px",
   cursor: "pointer"
 });
+
+// Row button content uses generous internal spacing so text and avatars remain easy to scan while the row itself stretches edge-to-edge.
+const sidebarRowButtonReset: CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "transparent",
+  padding: "16px 18px",
+  textAlign: "left",
+  cursor: "pointer"
+};
+
+// The menu trigger is intentionally tiny and transparent so it reads as an inline affordance instead of a second list row.
+const sidebarIconButtonReset: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  width: 24,
+  height: 24,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginRight: 12,
+  padding: 0,
+  cursor: "pointer",
+  transition: "color 120ms ease, opacity 120ms ease"
+};
 
 const SidebarItemContent = ({
   label,
@@ -2397,13 +2467,14 @@ const SidebarItemContent = ({
 
 const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, hovered = false): CSSProperties => ({
   ...menuItem(theme),
-  padding: "12px 14px",
+  padding: "16px 18px",
   fontSize: 16,
   fontWeight: 500,
-  borderRadius: radiusTokens.sm,
+  borderRadius: 0,
   minHeight: 64,
   display: "flex",
   alignItems: "center",
+  justifyContent: "space-between",
   background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : "transparent",
   color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
   transition: "background-color 120ms ease, color 120ms ease"
