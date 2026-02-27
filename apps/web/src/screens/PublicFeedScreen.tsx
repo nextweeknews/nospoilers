@@ -86,6 +86,9 @@ export const PublicFeedScreen = ({
 }: PublicFeedScreenProps) => {
   const [pickerForPostId, setPickerForPostId] = useState<string | null>(null);
   const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
+  const [hoveredGroupPillKey, setHoveredGroupPillKey] = useState<string | null>(null);
+  const [hoveredGroupAddPostId, setHoveredGroupAddPostId] = useState<string | null>(null);
+  const [hoveredReactionPostId, setHoveredReactionPostId] = useState<string | null>(null);
   const [menuForPostId, setMenuForPostId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -389,41 +392,63 @@ export const PublicFeedScreen = ({
             </p>
             {mode === "group" ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                {(post.groupReactionPills ?? []).map((pill) => (
-                  <button
-                    key={`${post.id}-${pill.emoji}`}
-                    type="button"
-                    onClick={() => onToggleGroupEmojiReaction?.(String(post.id), pill.emoji)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      borderRadius: 999,
-                      border: `1px solid ${pill.viewerHasReacted ? theme.colors.accent : theme.colors.border}`,
-                      padding: "2px 10px",
-                      background: pill.viewerHasReacted ? `${theme.colors.accent}15` : "transparent",
-                      color: theme.colors.textPrimary,
-                      fontSize: 12,
-                      cursor: "pointer"
-                    }}
-                  >
-                    <span aria-hidden="true">{pill.emoji}</span>
-                    <span>{pill.count}</span>
-                  </button>
-                ))}
+                {(post.groupReactionPills ?? []).map((pill) => {
+                  const pillKey = `${post.id}-${pill.emoji}`;
+                  const isHovered = hoveredGroupPillKey === pillKey;
+                  const borderColor =
+                    pill.viewerHasReacted || isHovered
+                      ? theme.colors.accent
+                      : theme.colors.border;
+                  return (
+                    <button
+                      key={pillKey}
+                      type="button"
+                      onClick={() =>
+                        onToggleGroupEmojiReaction?.(String(post.id), pill.emoji)
+                      }
+                      onMouseEnter={() => setHoveredGroupPillKey(pillKey)}
+                      onMouseLeave={() =>
+                        setHoveredGroupPillKey((current) =>
+                          current === pillKey ? null : current
+                        )
+                      }
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        minHeight: 24,
+                        gap: 6,
+                        borderRadius: 999,
+                        border: `1px solid ${borderColor}`,
+                        padding: "2px 10px",
+                        background: pill.viewerHasReacted
+                          ? `${theme.colors.accent}15`
+                          : "transparent",
+                        color: theme.colors.textPrimary,
+                        fontSize: 12,
+                        cursor: "pointer"
+                      }}
+                    >
+                      <span aria-hidden="true">{pill.emoji}</span>
+                      <span>{pill.count}</span>
+                    </button>
+                  );
+                })}
 
                 <button
                   type="button"
                   onClick={() => setPickerForPostId((cur) => (cur === String(post.id) ? null : String(post.id)))}
+                  onMouseEnter={() => setHoveredGroupAddPostId(String(post.id))}
+                  onMouseLeave={() => setHoveredGroupAddPostId((current) => (current === String(post.id) ? null : current))}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    minHeight: 24,
                     borderRadius: 999,
-                    border: `1px solid ${theme.colors.border}`,
+                    border: `1px solid ${hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.border}`,
                     padding: "2px 10px",
                     background: "transparent",
-                    color: theme.colors.textSecondary,
+                    color: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.textSecondary,
                     fontSize: 12,
                     cursor: "pointer"
                   }}
@@ -453,22 +478,44 @@ export const PublicFeedScreen = ({
                   onToggleReaction?.(post.id, "pill_click");
                 }}
                 aria-label={post.viewerHasReacted ? "Remove heart reaction" : "Add heart reaction"}
+                onMouseEnter={() => setHoveredReactionPostId(String(post.id))}
+                onMouseLeave={() => setHoveredReactionPostId((current) => (current === String(post.id) ? null : current))}
                 style={{
                   justifySelf: "start",
                   display: "inline-flex",
                   alignItems: "center",
+                  minHeight: 24,
                   gap: 6,
                   borderRadius: 999,
-                  border: `1px solid ${post.viewerHasReacted ? "#ef4444" : theme.colors.border}`,
-                  padding: "1px 8px",
-                  backgroundColor: post.viewerHasReacted ? "#fee2e2" : "transparent",
-                  color: post.viewerHasReacted ? "#ef4444" : theme.colors.textSecondary,
+                  border: `1px solid ${post.viewerHasReacted || hoveredReactionPostId === String(post.id) ? theme.colors.accent : theme.colors.border}`,
+                  padding: "2px 10px",
+                  backgroundColor: "transparent",
+                  color: theme.colors.textSecondary,
                   fontSize: 12,
                   lineHeight: 1.3,
                   cursor: "pointer"
                 }}
               >
-                <span aria-hidden="true" style={{ fontSize: 12 }}>{post.viewerHasReacted ? "♥" : "♡"}</span>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: "inline-block",
+                    width: 12,
+                    height: 12,
+                    backgroundColor:
+                      post.viewerHasReacted || hoveredReactionPostId === String(post.id)
+                        ? theme.colors.accent
+                        : theme.colors.textSecondary,
+                    maskImage: `url('${post.viewerHasReacted ? "/graphics/react.svg" : "/graphics/noreact.svg"}')`,
+                    maskRepeat: "no-repeat",
+                    maskPosition: "center",
+                    maskSize: "contain",
+                    WebkitMaskImage: `url('${post.viewerHasReacted ? "/graphics/react.svg" : "/graphics/noreact.svg"}')`,
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    WebkitMaskSize: "contain",
+                  }}
+                />
                 <span>{post.reactionCount}</span>
               </button>
             )}
