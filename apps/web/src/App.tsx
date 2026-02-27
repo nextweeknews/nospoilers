@@ -729,7 +729,7 @@ export const App = () => {
         supabaseClient
           .from("post_reactions")
           .select("post_id")
-          .eq("user_id", currentUser.id)
+          .eq("user_id", currentUser.id),
         supabaseClient
           .from("post_reaction_counts")
           .select("post_id,reaction_count")
