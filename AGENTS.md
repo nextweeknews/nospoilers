@@ -11,7 +11,7 @@ The full docs for this project are hosted at:
 - Component docs: https://www.radix-ui.com/themes/docs/components (e.g., .../components/button, .../components/dialog)
 - Utilities: https://www.radix-ui.com/themes/docs/utilities/box
 - Releases: https://www.radix-ui.com/themes/docs/overview/releases
-When you need to understand a component's API, intended behavior, or usage patterns, consult the docs at the URLs above rather than guessing.
+- When you need to understand a component's API, intended behavior, or usage patterns, consult the docs at the URLs above rather than guessing.
 
 # Here is the Supabase SQL schema for this project:
 ```
