@@ -1,4 +1,13 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
+import { useState } from "react";
+
+type GroupReactionPill = {
+  emoji: string;
+  count: number;
+  viewerHasReacted: boolean;
+};
 
 type FeedPost = {
   id: string;
@@ -11,6 +20,7 @@ type FeedPost = {
   isSpoilerHidden?: boolean;
   reactionCount: number;
   viewerHasReacted: boolean;
+  groupReactionPills?: GroupReactionPill[];
 };
 
 type PublicFeedScreenProps = {
@@ -22,7 +32,9 @@ type PublicFeedScreenProps = {
   loadingMessage?: string;
   emptyMessage?: string;
   showCatalogContext?: boolean;
+  mode?: "public" | "group";
   onToggleReaction?: (postId: string, source: "double_click" | "pill_click") => void;
+  onToggleGroupEmojiReaction?: (postId: string, emoji: string) => void;
 };
 
 const formatRelativeTimestamp = (
@@ -62,8 +74,12 @@ export const PublicFeedScreen = ({
   loadingMessage = "Loading public posts…",
   emptyMessage = "No public posts yet.",
   showCatalogContext = true,
+  mode = "public",
   onToggleReaction,
+  onToggleGroupEmojiReaction,
 }: PublicFeedScreenProps) => {
+  const [pickerForPostId, setPickerForPostId] = useState<string | null>(null);
+
   const renderTimestamp = (createdAt: string) => (
     <small
       style={{
@@ -261,30 +277,92 @@ export const PublicFeedScreen = ({
             >
               {post.previewText ?? "(No text)"}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                onToggleReaction?.(post.id, "pill_click");
-              }}
-              aria-label={post.viewerHasReacted ? "Remove heart reaction" : "Add heart reaction"}
-              style={{
-                justifySelf: "start",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                borderRadius: 999,
-                border: `1px solid ${post.viewerHasReacted ? "#ef4444" : theme.colors.border}`,
-                padding: "1px 8px",
-                backgroundColor: post.viewerHasReacted ? "#fee2e2" : "transparent",
-                color: post.viewerHasReacted ? "#ef4444" : theme.colors.textSecondary,
-                fontSize: 12,
-                lineHeight: 1.3,
-                cursor: "pointer"
-              }}
-            >
-              <span aria-hidden="true" style={{ fontSize: 12 }}>{post.viewerHasReacted ? "♥" : "♡"}</span>
-              <span>{post.reactionCount}</span>
-            </button>
+            {mode === "group" ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                {(post.groupReactionPills ?? []).map((pill) => (
+                  <button
+                    key={`${post.id}-${pill.emoji}`}
+                    type="button"
+                    onClick={() => onToggleGroupEmojiReaction?.(String(post.id), pill.emoji)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      borderRadius: 999,
+                      border: `1px solid ${pill.viewerHasReacted ? theme.colors.accent : theme.colors.border}`,
+                      padding: "2px 10px",
+                      background: pill.viewerHasReacted ? `${theme.colors.accent}15` : "transparent",
+                      color: theme.colors.textPrimary,
+                      fontSize: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    <span aria-hidden="true">{pill.emoji}</span>
+                    <span>{pill.count}</span>
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setPickerForPostId((cur) => (cur === String(post.id) ? null : String(post.id)))}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 999,
+                    border: `1px solid ${theme.colors.border}`,
+                    padding: "2px 10px",
+                    background: "transparent",
+                    color: theme.colors.textSecondary,
+                    fontSize: 12,
+                    cursor: "pointer"
+                  }}
+                  aria-label="Add reaction"
+                >
+                  +
+                </button>
+
+                {pickerForPostId === String(post.id) ? (
+                  <div style={{ position: "relative" }}>
+                    <div style={{ position: "absolute", zIndex: 50, top: 6 }}>
+                      <Picker
+                        data={data}
+                        onEmojiSelect={(e: { native?: string }) => {
+                          const chosen = String(e.native ?? "");
+                          setPickerForPostId(null);
+                          if (chosen) onToggleGroupEmojiReaction?.(String(post.id), chosen);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  onToggleReaction?.(post.id, "pill_click");
+                }}
+                aria-label={post.viewerHasReacted ? "Remove heart reaction" : "Add heart reaction"}
+                style={{
+                  justifySelf: "start",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 999,
+                  border: `1px solid ${post.viewerHasReacted ? "#ef4444" : theme.colors.border}`,
+                  padding: "1px 8px",
+                  backgroundColor: post.viewerHasReacted ? "#fee2e2" : "transparent",
+                  color: post.viewerHasReacted ? "#ef4444" : theme.colors.textSecondary,
+                  fontSize: 12,
+                  lineHeight: 1.3,
+                  cursor: "pointer"
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 12 }}>{post.viewerHasReacted ? "♥" : "♡"}</span>
+                <span>{post.reactionCount}</span>
+              </button>
+            )}
           </div>
         </article>
       ))}

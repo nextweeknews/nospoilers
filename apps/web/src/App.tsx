@@ -42,6 +42,12 @@ type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 type GroupEntity = SupabaseGroupRow;
 
+type GroupReactionPill = {
+  emoji: string;
+  count: number;
+  viewerHasReacted: boolean;
+};
+
 type PostEntity = SupabasePostRow & {
   previewText: string | null;
   isSpoilerHidden?: boolean;
@@ -51,6 +57,7 @@ type PostEntity = SupabasePostRow & {
   progressLine?: string;
   reactionCount: number;
   viewerHasReacted: boolean;
+  groupReactionPills?: GroupReactionPill[]; // group feed only
   catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
 };
 
@@ -578,6 +585,47 @@ export const App = () => {
             console.error("[app] group feed load failed", groupFeedResult.error);
             setGroupPosts([]);
           } else {
+            const groupPostIds = ((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => Number(post.id));
+            const [emojiCountsResult, viewerEmojiReactionsResult] = groupPostIds.length
+              ? await Promise.all([
+                  supabaseClient
+                    .from("post_reaction_emoji_counts")
+                    .select("post_id,emoji,reaction_count")
+                    .in("post_id", groupPostIds),
+                  supabaseClient
+                    .from("post_reactions")
+                    .select("post_id,emoji")
+                    .eq("user_id", currentUser.id)
+                    .in("post_id", groupPostIds)
+                ])
+              : [{ data: [], error: null }, { data: [], error: null }];
+
+            const viewerEmojiByPostId = new Map<string, Set<string>>();
+            (((viewerEmojiReactionsResult.data as Array<{ post_id: number; emoji: string }> | null) ?? [])).forEach((row) => {
+              const key = String(row.post_id);
+              const set = viewerEmojiByPostId.get(key) ?? new Set<string>();
+              set.add(row.emoji);
+              viewerEmojiByPostId.set(key, set);
+            });
+
+            const pillsByPostId = new Map<string, GroupReactionPill[]>();
+            (((emojiCountsResult.data as Array<{ post_id: number; emoji: string; reaction_count: number }> | null) ?? [])).forEach((row) => {
+              const key = String(row.post_id);
+              const viewerSet = viewerEmojiByPostId.get(key) ?? new Set<string>();
+              const list = pillsByPostId.get(key) ?? [];
+              list.push({
+                emoji: row.emoji,
+                count: Math.max(0, Number(row.reaction_count ?? 0)),
+                viewerHasReacted: viewerSet.has(row.emoji)
+              });
+              pillsByPostId.set(key, list);
+            });
+
+            for (const [key, list] of pillsByPostId.entries()) {
+              list.sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+              pillsByPostId.set(key, list);
+            }
+
             setGroupPosts(
               ((groupFeedResult.data as SupabasePostRow[] | null) ?? []).map((post) => ({
                 ...post,
@@ -596,7 +644,8 @@ export const App = () => {
                   book_percent?: number | null;
                   catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
                 }),
-                ...mapPostWithReactionState(post, reactedPostIds, reactionCountsByPostId)
+                ...mapPostWithReactionState(post, reactedPostIds, reactionCountsByPostId),
+                groupReactionPills: pillsByPostId.get(String(post.id)) ?? []
               }))
             );
           }
@@ -1155,6 +1204,90 @@ export const App = () => {
       }
     };
   
+
+  const onToggleGroupEmojiReaction = async (postId: string, emoji: string) => {
+    if (!currentUser) return;
+
+    const postIdStr = String(postId);
+    const currentPost = groupPosts.find((post) => String(post.id) === postIdStr);
+    const pills = currentPost?.groupReactionPills ?? [];
+
+    const existing = pills.find((pill) => pill.emoji === emoji);
+    const viewerHas = Boolean(existing?.viewerHasReacted);
+    const willReact = !viewerHas;
+
+    const nextPills = (() => {
+      if (willReact) {
+        if (existing) {
+          return pills.map((pill) => (
+            pill.emoji === emoji ? { ...pill, count: pill.count + 1, viewerHasReacted: true } : pill
+          ));
+        }
+        return [...pills, { emoji, count: 1, viewerHasReacted: true }];
+      }
+
+      if (!existing) return pills;
+      const nextCount = Math.max(0, existing.count - 1);
+      if (nextCount === 0) {
+        return pills.filter((pill) => pill.emoji !== emoji);
+      }
+      return pills.map((pill) => (
+        pill.emoji === emoji ? { ...pill, count: nextCount, viewerHasReacted: false } : pill
+      ));
+    })().sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+
+    setGroupPosts((prev) => prev.map((post) => (
+      String(post.id) === postIdStr ? { ...post, groupReactionPills: nextPills } : post
+    )));
+
+    const request = willReact
+      ? supabaseClient
+          .from("post_reactions")
+          .insert({ post_id: Number(postIdStr), user_id: currentUser.id, emoji })
+      : supabaseClient
+          .from("post_reactions")
+          .delete()
+          .eq("post_id", Number(postIdStr))
+          .eq("user_id", currentUser.id)
+          .eq("emoji", emoji);
+
+    const { error } = await request;
+
+    if (error) {
+      console.error("[group reactions] toggle failed", error);
+
+      const [{ data: counts }, { data: viewer }] = await Promise.all([
+        supabaseClient
+          .from("post_reaction_emoji_counts")
+          .select("post_id,emoji,reaction_count")
+          .eq("post_id", Number(postIdStr)),
+        supabaseClient
+          .from("post_reactions")
+          .select("post_id,emoji")
+          .eq("user_id", currentUser.id)
+          .eq("post_id", Number(postIdStr))
+      ]);
+
+      const viewerSet = new Set<string>((viewer ?? []).map((row) => row.emoji));
+      const repaired = (counts ?? [])
+        .map((row) => ({
+          emoji: row.emoji,
+          count: Math.max(0, Number(row.reaction_count ?? 0)),
+          viewerHasReacted: viewerSet.has(row.emoji)
+        }))
+        .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+
+      setGroupPosts((prev) => prev.map((post) => (
+        String(post.id) === postIdStr ? { ...post, groupReactionPills: repaired } : post
+      )));
+
+      const msg = String(error.message ?? "");
+      if (msg.toLowerCase().includes("maximum of 8")) {
+        console.warn("Max 8 emojis reached for this post.");
+      }
+    }
+  };
+
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
     setCurrentUser(undefined);
@@ -1595,7 +1728,7 @@ export const App = () => {
               )
             ) : null}
 
-            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} onToggleReaction={onTogglePostReaction} /> : null}
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} mode="public" onToggleReaction={onTogglePostReaction} /> : null}
 
             {mainView === "groups" ? (
               selectedGroup ? (
@@ -1612,6 +1745,8 @@ export const App = () => {
                     loadingMessage="Loading group posts…"
                     emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
                     showCatalogContext={!selectedGroupCatalogItemId}
+                    mode="group"
+                    onToggleGroupEmojiReaction={onToggleGroupEmojiReaction}
                   />
                 </>
               ) : (
