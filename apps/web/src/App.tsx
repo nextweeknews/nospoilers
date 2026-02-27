@@ -1037,6 +1037,11 @@ export const App = () => {
   const theme = createTheme(resolveThemePreference(systemMode, themePreference));
 
   useEffect(() => {
+    document.documentElement.style.backgroundColor = theme.colors.background;
+    document.body.style.backgroundColor = theme.colors.background;
+  }, [theme.colors.background]);
+
+  useEffect(() => {
     window.sessionStorage.setItem(MAIN_VIEW_KEY, mainView);
   }, [mainView]);
 
@@ -1501,11 +1506,10 @@ export const App = () => {
         style={{
           width: "100%",
           minHeight: "100vh",
-          background: theme.colors.surface,
+          background: theme.colors.background,
           color: theme.colors.textPrimary,
-          overflow: "hidden",
           display: "grid",
-          gridTemplateRows: "auto 1fr"
+          gridTemplateRows: "auto minmax(0, 1fr)"
         }}
       >
         <style>{`
@@ -1520,11 +1524,16 @@ export const App = () => {
         `}</style>
         <header
           style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
             padding: spacingTokens.md,
             display: "grid",
             gridTemplateColumns: "180px minmax(280px, 1fr) auto",
             alignItems: "center",
-            gap: spacingTokens.md
+            gap: spacingTokens.md,
+            background: theme.colors.background,
+            borderBottom: `1px solid ${theme.colors.border}`
           }}
         >
           <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 22 }}>NoSpoilers</h2>
@@ -1622,6 +1631,7 @@ export const App = () => {
             gridTemplateColumns: "280px 280px minmax(420px, 1fr) 340px",
             justifyContent: "start",
             minHeight: 0,
+            height: "100%",
             background: theme.colors.background
           }}
         >

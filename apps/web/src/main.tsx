@@ -17,7 +17,9 @@ if (!document.getElementById(typographyStyleTagId)) {
     body,
     #root {
       margin: 0;
+      min-height: 100%;
       font-family: var(--ns-font-family-base);
+      background: #ffffff;
     }
   `;
   document.head.appendChild(typographyStyleTag);

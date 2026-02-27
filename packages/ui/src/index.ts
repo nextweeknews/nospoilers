@@ -65,7 +65,7 @@ export const createTheme = (mode: ThemeMode): AppTheme => {
     return {
       mode,
       colors: {
-        background: brandPalette.green[50],
+        background: "#ffffff",
         surface: "#ffffff",
         surfaceMuted: brandPalette.slate[100],
         textPrimary: brandPalette.slate[900],
@@ -82,7 +82,7 @@ export const createTheme = (mode: ThemeMode): AppTheme => {
   return {
     mode,
     colors: {
-      background: "#06140f",
+      background: "#1f1f1f",
       surface: "#0f1f19",
       surfaceMuted: "#143027",
       textPrimary: brandPalette.slate[50],
