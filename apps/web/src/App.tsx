@@ -597,19 +597,25 @@ export const App = () => {
                     .select("post_id,emoji")
                     .eq("user_id", currentUser.id)
                     .in("post_id", groupPostIds)
+                    .neq("emoji", "react")
                 ])
               : [{ data: [], error: null }, { data: [], error: null }];
 
-            const viewerEmojiByPostId = new Map<string, Set<string>>();
+           const viewerEmojiByPostId = new Map<string, Set<string>>();
             (((viewerEmojiReactionsResult.data as Array<{ post_id: number; emoji: string }> | null) ?? [])).forEach((row) => {
               const key = String(row.post_id);
               const set = viewerEmojiByPostId.get(key) ?? new Set<string>();
               set.add(row.emoji);
               viewerEmojiByPostId.set(key, set);
             });
-
+            
+            const rawEmojiCounts =
+              ((emojiCountsResult.data as Array<{ post_id: number; emoji: string; reaction_count: number }> | null) ?? []);
+            
+            const emojiCounts = rawEmojiCounts.filter((r) => r.emoji !== "react"); // ignore legacy rows
+            
             const pillsByPostId = new Map<string, GroupReactionPill[]>();
-            (((emojiCountsResult.data as Array<{ post_id: number; emoji: string; reaction_count: number }> | null) ?? [])).forEach((row) => {
+            emojiCounts.forEach((row) => {
               const key = String(row.post_id);
               const viewerSet = viewerEmojiByPostId.get(key) ?? new Set<string>();
               const list = pillsByPostId.get(key) ?? [];
@@ -620,7 +626,7 @@ export const App = () => {
               });
               pillsByPostId.set(key, list);
             });
-
+            
             for (const [key, list] of pillsByPostId.entries()) {
               list.sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
               pillsByPostId.set(key, list);
@@ -1163,7 +1169,7 @@ export const App = () => {
                 .from("post_reactions")
                 .upsert(
                   { post_id: Number(postIdStr), user_id: currentUser.id, emoji: "react" },
-                  { onConflict: "post_id,user_id" }
+                  { onConflict: "post_id,user_id,emoji" }
                 )
             : supabaseClient
                 .from("post_reactions")
@@ -1243,7 +1249,10 @@ export const App = () => {
     const request = willReact
       ? supabaseClient
           .from("post_reactions")
-          .insert({ post_id: Number(postIdStr), user_id: currentUser.id, emoji })
+          .upsert(
+            { post_id: Number(postIdStr), user_id: currentUser.id, emoji },
+            { onConflict: "post_id,user_id,emoji" }
+          )
       : supabaseClient
           .from("post_reactions")
           .delete()
@@ -1255,6 +1264,12 @@ export const App = () => {
 
     if (error) {
       console.error("[group reactions] toggle failed", error);
+
+      const msg = String(error.message ?? "");
+      if (error.code === "23505" || msg.toLowerCase().includes("duplicate key")) {
+        // The row already exists; keep optimistic UI as-is.
+        return;
+      }
 
       const [{ data: counts }, { data: viewer }] = await Promise.all([
         supabaseClient
@@ -1281,8 +1296,8 @@ export const App = () => {
         String(post.id) === postIdStr ? { ...post, groupReactionPills: repaired } : post
       )));
 
-      const msg = String(error.message ?? "");
-      if (msg.toLowerCase().includes("maximum of 8")) {
+      const errMsg = String(error.message ?? "");
+      if (errMsg.toLowerCase().includes("maximum of 8")) {
         console.warn("Max 8 emojis reached for this post.");
       }
     }
