@@ -36,7 +36,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
     <Theme
       appearance="inherit"
-      accentColor="blue"
+      // Use a vibrant green accent globally so primary Radix components share the same visual identity.
+      accentColor="grass"
       grayColor="slate"
       radius="medium"
       scaling="100%"
