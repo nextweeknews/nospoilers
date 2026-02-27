@@ -4,6 +4,7 @@ import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
 import {
   Avatar,
+  AlertDialog,
   Box,
   Button,
   Card,
@@ -102,6 +103,7 @@ export const ProfileTabScreen = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+  const [pendingRemovalItem, setPendingRemovalItem] = useState<ShelfItem | null>(null);
 
   const editingItem = useMemo(() => shelfItems.find((item) => item.catalogItemId === editingItemId) ?? null, [editingItemId, shelfItems]);
 
@@ -296,7 +298,15 @@ export const ProfileTabScreen = ({
                 <DropdownMenu.Content>
                   <DropdownMenu.Item onSelect={() => openEditor(item)}>Edit progress</DropdownMenu.Item>
                   <DropdownMenu.Separator />
-                  <DropdownMenu.Item color="red" onSelect={() => { void handleRemove(item.catalogItemId); }}>Remove from shelf</DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    color="red"
+                    onSelect={() => {
+                      // Use a confirmation step so shelf removals happen only after explicit intent.
+                      setPendingRemovalItem(item);
+                    }}
+                  >
+                    Remove from shelf
+                  </DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Root>
             </article>
@@ -399,6 +409,37 @@ export const ProfileTabScreen = ({
           </Box>
         ) : null}
       </Flex>
+
+      <AlertDialog.Root
+        open={pendingRemovalItem != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setPendingRemovalItem(null);
+          }
+        }}
+      >
+        <AlertDialog.Content maxWidth="360px">
+          <AlertDialog.Title>Remove from shelf?</AlertDialog.Title>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button
+                color="red"
+                onClick={() => {
+                  if (pendingRemovalItem) {
+                    void handleRemove(pendingRemovalItem.catalogItemId);
+                  }
+                  setPendingRemovalItem(null);
+                }}
+              >
+                Remove
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </Card>
   );
 };
