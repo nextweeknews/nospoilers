@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
@@ -302,6 +302,10 @@ export const App = () => {
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
   const [trendingStatus, setTrendingStatus] = useState<LoadStatus>("loading");
   const [trendingError, setTrendingError] = useState<string>();
+  // Prevent request spam per post while keeping optimistic UI
+  const reactionInFlightRef = useRef<Set<string>>(new Set());
+  // Stores the latest desired state while a request is in flight
+  const desiredReactionStateRef = useRef<Map<string, boolean>>(new Map());
 
   const syncAuthState = async (session: Session | null) => {
     if (!session?.user) {
@@ -1042,82 +1046,107 @@ export const App = () => {
   const defaultCreatePostGroupId = mainView === "groups" && selectedGroupId ? selectedGroupId : undefined;
   const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
 
-  const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
-    if (!currentUser) {
-      return;
-    }
-
-    const hasReacted = reactedPostIds.has(postId);
-    if (source === "double_click" && hasReacted) {
-      return;
-    }
-
-    const willReact = source === "double_click" ? true : !hasReacted;
-
-    const previousReactedPostIds = reactedPostIds;
-    const previousReactionCountsByPostId = reactionCountsByPostId;
-
-    const nextReactedPostIds = new Set(reactedPostIds);
-    const nextReactionCountsByPostId = new Map(reactionCountsByPostId);
-    const currentCount = nextReactionCountsByPostId.get(postId) ?? 0;
-
-    if (willReact) {
-      nextReactedPostIds.add(postId);
-      nextReactionCountsByPostId.set(postId, currentCount + (hasReacted ? 0 : 1));
-    } else {
-      nextReactedPostIds.delete(postId);
-      nextReactionCountsByPostId.set(postId, Math.max(0, currentCount - (hasReacted ? 1 : 0)));
-    }
-
-    setReactedPostIds(nextReactedPostIds);
-    setReactionCountsByPostId(nextReactionCountsByPostId);
-    setPosts((previous) =>
-      previous.map((post) =>
-        String(post.id) === postId
-          ? {
-              ...post,
-              viewerHasReacted: willReact,
-              reactionCount: nextReactionCountsByPostId.get(postId) ?? 0
-            }
-          : post
-      )
-    );
-
-    const request = willReact
-      ? supabaseClient
-          .from("post_reactions")
-          .upsert(
-            { post_id: Number(postId), user_id: currentUser.id, emoji: "react" },
-            { onConflict: "post_id,user_id", ignoreDuplicates: false }
-          )
-          .select("post_id")
-      : supabaseClient
-          .from("post_reactions")
-          .delete()
-          .eq("post_id", Number(postId))
-          .eq("user_id", currentUser.id)
-          .select("post_id");
-
-    const { error } = await request;
-
-    if (error) {
-      console.error("[app] failed to toggle reaction", error);
-      setReactedPostIds(previousReactedPostIds);
-      setReactionCountsByPostId(previousReactionCountsByPostId);
-      setPosts((previous) =>
-        previous.map((post) =>
-          String(post.id) === postId
-            ? {
-                ...post,
-                viewerHasReacted: previousReactedPostIds.has(postId),
-                reactionCount: previousReactionCountsByPostId.get(postId) ?? 0
-              }
-            : post
-        )
-      );
-    }
-  };
-
+    const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
+      if (!currentUser) return;
+    
+      const hadReacted = reactedPostIds.has(postId);
+    
+      // Double click is "react only"
+      if (source === "double_click" && hadReacted) return;
+    
+      // Pill click toggles, double click forces react=true
+      const willReact = source === "double_click" ? true : !hadReacted;
+    
+      // Snapshot for rollback
+      const prevReacted = reactedPostIds;
+      const prevCounts = reactionCountsByPostId;
+    
+      // ---- Optimistic update (immediate UI) ----
+      const nextReacted = new Set(prevReacted);
+      const nextCounts = new Map(prevCounts);
+    
+      const prevCount = nextCounts.get(postId) ?? 0;
+    
+      // Only change count if state actually changes
+      const delta = willReact === hadReacted ? 0 : willReact ? 1 : -1;
+    
+      if (willReact) nextReacted.add(postId);
+      else nextReacted.delete(postId);
+    
+      nextCounts.set(postId, Math.max(0, prevCount + delta));
+    
+      setReactedPostIds(nextReacted);
+      setReactionCountsByPostId(nextCounts);
+    
+      // Update both feeds (public + group) so whichever is visible updates instantly
+      const patchPost = (p: PostEntity) =>
+        String(p.id) === postId
+          ? { ...p, viewerHasReacted: willReact, reactionCount: Math.max(0, (p.reactionCount ?? prevCount) + delta) }
+          : p;
+    
+      setPosts((prev) => prev.map(patchPost));
+      setGroupPosts((prev) => prev.map(patchPost));
+    
+      // ---- Request coalescing (prevents spam) ----
+      desiredReactionStateRef.current.set(postId, willReact);
+    
+      // If a request is already running for this post, stop here.
+      // The in-flight loop will read the newest desired state when it finishes.
+      if (reactionInFlightRef.current.has(postId)) return;
+    
+      reactionInFlightRef.current.add(postId);
+    
+      try {
+        while (true) {
+          const desired = desiredReactionStateRef.current.get(postId);
+          if (typeof desired !== "boolean") break;
+    
+          const request = desired
+            ? supabaseClient
+                .from("post_reactions")
+                .upsert(
+                  { post_id: Number(postId), user_id: currentUser.id, emoji: "react" },
+                  { onConflict: "post_id,user_id" }
+                )
+            : supabaseClient
+                .from("post_reactions")
+                .delete()
+                .eq("post_id", Number(postId))
+                .eq("user_id", currentUser.id);
+    
+          const { error } = await request;
+    
+          if (error) {
+            console.error("[app] failed to toggle reaction", error);
+    
+            // Roll back to the snapshot from the moment this toggle started
+            setReactedPostIds(prevReacted);
+            setReactionCountsByPostId(prevCounts);
+    
+            const rollbackPost = (p: PostEntity) =>
+              String(p.id) === postId
+                ? {
+                    ...p,
+                    viewerHasReacted: prevReacted.has(postId),
+                    reactionCount: prevCounts.get(postId) ?? 0
+                  }
+                : p;
+    
+            setPosts((prev) => prev.map(rollbackPost));
+            setGroupPosts((prev) => prev.map(rollbackPost));
+    
+            desiredReactionStateRef.current.delete(postId);
+            break;
+          }
+    
+          // If desired state hasn't changed since request started, we're done.
+          if (desiredReactionStateRef.current.get(postId) === desired) break;
+        }
+      } finally {
+        reactionInFlightRef.current.delete(postId);
+      }
+    };
+  
   const onChooseDifferentLoginMethod = async () => {
     await signOut();
     setCurrentUser(undefined);
