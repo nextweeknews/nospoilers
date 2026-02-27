@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { Box, Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
+import { Box, Button, Card, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
   createTheme,
@@ -201,6 +201,41 @@ const hasReachedPostProgress = (post: PostEntity, shelfItem: ShelfItem): boolean
   return currentEpisode >= targetEpisode;
 };
 
+// This helper keeps optimistic shelf updates consistent with the same display logic used during initial data load.
+const buildOptimisticShelfItem = (
+  previous: ShelfItem,
+  params: {
+    status: "in_progress" | "completed";
+    currentPage?: number | null;
+    progressPercent?: number | null;
+    currentSeasonNumber?: number | null;
+    currentEpisodeNumber?: number | null;
+    watchedEpisodeCount?: number | null;
+  }
+): ShelfItem => {
+  const isBook = previous.itemType === "book";
+  const totalTvUnits = previous.tvProgressUnits.length;
+  const nextProgressPercentValue = params.progressPercent ?? null;
+  const nextProgressPercent = isBook
+    ? Math.max(0, Math.min(100, Math.round(nextProgressPercentValue ?? ((params.currentPage ?? previous.currentPage ?? 0) && previous.pageCount ? ((params.currentPage ?? previous.currentPage ?? 0) / previous.pageCount) * 100 : 0))))
+    : Math.max(0, Math.min(100, Math.round(nextProgressPercentValue ?? (totalTvUnits ? ((params.watchedEpisodeCount ?? 0) / totalTvUnits) * 100 : 0))));
+
+  return {
+    ...previous,
+    status: params.status,
+    updatedAt: new Date().toISOString(),
+    completedAt: params.status === "completed" ? new Date().toISOString() : null,
+    currentPage: params.currentPage ?? null,
+    progressPercentValue: nextProgressPercentValue,
+    currentSeasonNumber: params.currentSeasonNumber ?? previous.currentSeasonNumber ?? null,
+    currentEpisodeNumber: params.currentEpisodeNumber ?? previous.currentEpisodeNumber ?? null,
+    progressPercent: nextProgressPercent,
+    progressSummary: isBook
+      ? (nextProgressPercentValue != null ? `${Math.round(nextProgressPercentValue)}%` : `Page ${params.currentPage ?? previous.currentPage ?? 0}/${previous.pageCount ?? "?"}`)
+      : `${Math.round(nextProgressPercent)}% watched`
+  };
+};
+
 const SPOILER_HIDDEN_MESSAGE = "⚠️ Spoiler warning: progress not reached yet. Advance further in this title to reveal this post.";
 
 const mapUser = (user: User, session: Session): AuthUser => ({
@@ -304,6 +339,7 @@ export const App = () => {
   const [notifications, setNotifications] = useState<Array<{ id: string; type: string; createdAt: string; text: string }>>([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
+  const [requestedShelfEditorItemId, setRequestedShelfEditorItemId] = useState<string | null>(null);
   const [groupCatalogItems, setGroupCatalogItems] = useState<GroupCatalogItem[]>([]);
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
@@ -1112,6 +1148,85 @@ export const App = () => {
   const defaultCreatePostGroupId = mainView === "groups" && selectedGroupId ? selectedGroupId : undefined;
   const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
 
+  const requestShelfEditor = (catalogItemId: string) => {
+    // Route both profile and feed shelf interactions through the same editor flow so behavior stays consistent.
+    setMainView("profile");
+    setShowProfileSettings(false);
+    setRequestedShelfEditorItemId(catalogItemId);
+  };
+
+  const onSaveShelfProgress = async ({
+    catalogItemId,
+    status,
+    currentPage,
+    progressPercent,
+    currentSeasonNumber,
+    currentEpisodeNumber,
+    watchedEpisodeCount
+  }: {
+    catalogItemId: string;
+    status: "in_progress" | "completed";
+    currentPage?: number | null;
+    progressPercent?: number | null;
+    currentSeasonNumber?: number | null;
+    currentEpisodeNumber?: number | null;
+    watchedEpisodeCount?: number | null;
+  }) => {
+    if (!currentUser) return;
+
+    const existing = shelfItems.find((item) => item.catalogItemId === catalogItemId);
+    if (!existing) return;
+
+    const optimistic = buildOptimisticShelfItem(existing, {
+      status,
+      currentPage,
+      progressPercent,
+      currentSeasonNumber,
+      currentEpisodeNumber,
+      watchedEpisodeCount
+    });
+
+    setShelfItems((prev) => prev.map((item) => item.catalogItemId === catalogItemId ? optimistic : item));
+
+    const payload = {
+      user_id: currentUser.id,
+      catalog_item_id: Number(catalogItemId),
+      status,
+      current_page: currentPage ?? null,
+      progress_percent: progressPercent ?? null,
+      current_season_number: currentSeasonNumber ?? null,
+      current_episode_number: currentEpisodeNumber ?? null,
+      watched_episode_count: watchedEpisodeCount ?? null
+    };
+
+    const { error } = await supabaseClient.from("user_media_progress").upsert(payload, { onConflict: "user_id,catalog_item_id" });
+    if (error) {
+      console.error("[app] failed to update shelf progress", error);
+      setShelfItems((prev) => prev.map((item) => item.catalogItemId === catalogItemId ? existing : item));
+    }
+  };
+
+  const onRemoveShelfItem = async (catalogItemId: string) => {
+    if (!currentUser) return;
+
+    const previous = shelfItems;
+    setShelfItems((prev) => prev.filter((item) => item.catalogItemId !== catalogItemId));
+    if (selectedShelfCatalogItemId === catalogItemId) {
+      setSelectedShelfCatalogItemId(null);
+    }
+
+    const { error } = await supabaseClient
+      .from("user_media_progress")
+      .delete()
+      .eq("user_id", currentUser.id)
+      .eq("catalog_item_id", Number(catalogItemId));
+
+    if (error) {
+      console.error("[app] failed to remove shelf item", error);
+      setShelfItems(previous);
+    }
+  };
+
   const onSharePost = (postId: string) => {
     console.info("[app] share post placeholder", { postId });
   };
@@ -1781,24 +1896,10 @@ export const App = () => {
                   onEditProfile={() => setShowProfileSettings(true)}
                   onAccountSettings={() => setShowProfileSettings(true)}
                   shelfItems={shelfItems}
-                  onSaveShelfProgress={async ({ catalogItemId, status, currentPage, progressPercent, currentSeasonNumber, currentEpisodeNumber, watchedEpisodeCount }) => {
-                    const payload = {
-                      user_id: currentUser.id,
-                      catalog_item_id: Number(catalogItemId),
-                      status,
-                      current_page: currentPage ?? null,
-                      progress_percent: progressPercent ?? null,
-                      current_season_number: currentSeasonNumber ?? null,
-                      current_episode_number: currentEpisodeNumber ?? null,
-                      watched_episode_count: watchedEpisodeCount ?? null
-                    };
-
-                    const { error } = await supabaseClient.from("user_media_progress").upsert(payload, { onConflict: "user_id,catalog_item_id" });
-                    if (error) {
-                      console.error("[app] failed to update shelf progress", error);
-                      return;
-                    }
-                  }}
+                  requestedEditorItemId={requestedShelfEditorItemId}
+                  onEditorRequestHandled={() => setRequestedShelfEditorItemId(null)}
+                  onSaveShelfProgress={onSaveShelfProgress}
+                  onRemoveShelfItem={onRemoveShelfItem}
                 />
               )
             ) : null}
@@ -1958,14 +2059,16 @@ export const App = () => {
                     <strong style={{ color: theme.colors.textPrimary, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</strong>
                     <small style={{ color: theme.colors.textSecondary, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.progressSummary}</small>
                   </div>
-                  <button
-                    type="button"
-                    aria-label={`Edit ${item.title} progress`}
-                    onClick={() => { setMainView("profile"); setShowProfileSettings(false); }}
-                    style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, width: 30, height: 30, background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}
-                  >
-                    ⋯
-                  </button>
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                      <Button type="button" variant="soft" size="1" aria-label={`Open ${item.title} shelf actions`}>⋯</Button>
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content>
+                      <DropdownMenu.Item onSelect={() => requestShelfEditor(item.catalogItemId)}>Edit progress</DropdownMenu.Item>
+                      <DropdownMenu.Separator />
+                      <DropdownMenu.Item color="red" onSelect={() => { void onRemoveShelfItem(item.catalogItemId); }}>Remove from shelf</DropdownMenu.Item>
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Root>
                 </article>
               )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
             </section>
