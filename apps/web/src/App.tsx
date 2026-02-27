@@ -1117,10 +1117,14 @@ export const App = () => {
     const postIdNum = Number(postId);
     if (!Number.isFinite(postIdNum)) return;
 
-    const { error } = await supabaseClient.rpc("soft_delete_post", {
-      p_post_id: postIdNum,
-      p_user_id: currentUser.id
-    });
+    const { error } = await supabaseClient
+      .from("posts")
+      .update({
+        deleted_at: new Date().toISOString(),
+        status: "deleted"
+      })
+      .eq("id", postIdNum)
+      .eq("author_user_id", currentUser.id);
 
     if (error) {
       console.error("[app] failed to delete post", error);
