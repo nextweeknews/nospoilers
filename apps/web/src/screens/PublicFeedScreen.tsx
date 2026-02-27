@@ -346,7 +346,6 @@ export const PublicFeedScreen = ({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  marginLeft: 10,
                   color: theme.colors.textSecondary,
                   fontSize: 12,
                   fontWeight: 500,
