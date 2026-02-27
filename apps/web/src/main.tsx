@@ -1,5 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { Theme } from "@radix-ui/themes";
+import "@radix-ui/themes/styles.css";
 import { typographyTokens } from "@nospoilers/ui";
 import { App } from "./App";
 
@@ -26,5 +28,7 @@ if (!document.getElementById(typographyStyleTagId)) {
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <App />
+  <Theme>
+    <App />
+  </Theme>
 );
