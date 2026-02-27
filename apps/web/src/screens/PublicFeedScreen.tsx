@@ -1,5 +1,5 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { Avatar, Box, Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
+import { AlertDialog, Avatar, Box, Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -95,6 +95,7 @@ export const PublicFeedScreen = ({
   const [hoveredReactionPostId, setHoveredReactionPostId] = useState<string | null>(null);
   const [openMenuPostId, setOpenMenuPostId] = useState<string | null>(null);
   const [hoveredMenuTriggerPostId, setHoveredMenuTriggerPostId] = useState<string | null>(null);
+  const [pendingDeletePostId, setPendingDeletePostId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -158,7 +159,7 @@ export const PublicFeedScreen = ({
               setHoveredPostId((current) => (current === String(post.id) ? null : current));
             }}
             style={{
-              padding: `${spacingTokens.sm} ${spacingTokens.md}`,
+              padding: spacingTokens.md,
               borderBottom: `1px solid ${theme.colors.textPrimary}1A`,
               backgroundColor: isPostHovered
                 ? theme.colors.surfaceMuted ?? `${theme.colors.textPrimary}08`
@@ -176,7 +177,7 @@ export const PublicFeedScreen = ({
                 radius="full"
                 alt={`${post.authorDisplayName} avatar`}
               />
-              <Box style={{ display: "grid", gap: 6, width: "100%", minWidth: 0, position: "relative" }}>
+              <Box style={{ display: "grid", gap: 2, width: "100%", minWidth: 0, position: "relative" }}>
                 {isPostHovered || isMenuOpen ? (
                   <Box style={{ position: "absolute", top: 0, right: 0 }}>
                     {/* Keep the menu open state controlled so it stays visible until a user action closes it. */}
@@ -226,7 +227,13 @@ export const PublicFeedScreen = ({
                           <>
                             {/* Keep destructive actions visually separated so users can scan the menu safely. */}
                             <DropdownMenu.Separator />
-                            <DropdownMenu.Item color="red" onSelect={() => onDeletePost?.(String(post.id))}>
+                            <DropdownMenu.Item
+                              color="red"
+                              onSelect={() => {
+                                // Keep deletion behind a confirmation dialog so a single menu tap cannot remove content by mistake.
+                                setPendingDeletePostId(String(post.id));
+                              }}
+                            >
                               Delete post
                             </DropdownMenu.Item>
                           </>
@@ -393,6 +400,37 @@ export const PublicFeedScreen = ({
           </Box>
         );
       })}
+
+      <AlertDialog.Root
+        open={pendingDeletePostId != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setPendingDeletePostId(null);
+          }
+        }}
+      >
+        <AlertDialog.Content maxWidth="360px">
+          <AlertDialog.Title>Delete post?</AlertDialog.Title>
+          <Flex gap="3" justify="end" mt="4">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button
+                color="red"
+                onClick={() => {
+                  if (pendingDeletePostId) {
+                    onDeletePost?.(pendingDeletePostId);
+                  }
+                  setPendingDeletePostId(null);
+                }}
+              >
+                Delete
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </Box>
   );
 };

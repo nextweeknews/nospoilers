@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { Box, Button, Card, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
+import { AlertDialog, Box, Button, Card, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
   createTheme,
-  elevationTokens,
   radiusTokens,
   resolveThemePreference,
   spacingTokens,
@@ -301,7 +300,6 @@ export const App = () => {
     const saved = window.sessionStorage.getItem(MAIN_VIEW_KEY);
     return saved === "groups" || saved === "for-you" || saved === "profile" ? saved : "for-you";
   });
-  const [menuOpen, setMenuOpen] = useState(false);
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [currentUser, setCurrentUser] = useState<AuthUser>();
@@ -349,6 +347,7 @@ export const App = () => {
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
   const [trendingStatus, setTrendingStatus] = useState<LoadStatus>("loading");
   const [trendingError, setTrendingError] = useState<string>();
+  const [pendingSidebarShelfRemoval, setPendingSidebarShelfRemoval] = useState<ShelfItem | null>(null);
   // Prevent request spam per post while keeping optimistic UI
   const reactionInFlightRef = useRef<Set<string>>(new Set());
   // Stores the latest desired state while a request is in flight
@@ -1690,43 +1689,31 @@ export const App = () => {
             >
               🔔 {notifications.length}
             </button>
-            <button
-              type="button"
-              aria-label="Account menu"
-              onClick={() => setMenuOpen((current) => !current)}
-              style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
-            >
-              <img
-                src={currentUser.avatarUrl?.trim() || DEFAULT_AVATAR_PLACEHOLDER}
-                alt="Your avatar"
-                style={{ width: 36, height: 36, borderRadius: 999, objectFit: "cover", border: `1px solid ${theme.colors.border}` }}
-              />
-            </button>
-
-            {menuOpen ? (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 8px)",
-                  background: theme.colors.surface,
-                  border: `1px solid ${theme.colors.border}`,
-                  borderRadius: 12,
-                  boxShadow: elevationTokens.low,
-                  overflow: "hidden",
-                  zIndex: 10,
-                  minWidth: 180
-                }}
-              >
-                <button type="button" onClick={() => { setMainView("profile"); setShowProfileSettings(false); setMenuOpen(false); }} style={menuItem(theme)}>
-                  View profile
-                </button>
-                <button type="button" onClick={() => { setMainView("profile"); setShowProfileSettings(true); setMenuOpen(false); }} style={menuItem(theme)}>
-                  Account settings
-                </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
                 <button
                   type="button"
-                  onClick={async () => {
+                  aria-label="Account menu"
+                  style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", display: "grid", placeItems: "center" }}
+                >
+                  <img
+                    src={currentUser.avatarUrl?.trim() || DEFAULT_AVATAR_PLACEHOLDER}
+                    alt="Your avatar"
+                    style={{ width: 36, height: 36, borderRadius: 999, objectFit: "cover", border: `1px solid ${theme.colors.border}` }}
+                  />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="end">
+                <DropdownMenu.Item onSelect={() => { setMainView("profile"); setShowProfileSettings(false); }}>
+                  View profile
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => { setMainView("profile"); setShowProfileSettings(true); }}>
+                  Account settings
+                </DropdownMenu.Item>
+                {/* Keep a clear separator before the sign-out action so it scans as its own section. */}
+                <DropdownMenu.Separator />
+                <DropdownMenu.Item
+                  onSelect={async () => {
                     const { error } = await signOut();
                     if (error) {
                       setAuthStatus(`Unable to sign out: ${error.message}`);
@@ -1736,12 +1723,11 @@ export const App = () => {
                     setMainView("for-you");
                     setCurrentUser(undefined);
                   }}
-                  style={menuItem(theme)}
                 >
                   Log out
-                </button>
-              </div>
-            ) : null}
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
           </div>
         </header>
 
@@ -1872,7 +1858,7 @@ export const App = () => {
             ) : null}
           </aside>
 
-          <section style={{ overflowY: "auto", padding: spacingTokens.md, minWidth: 0, borderRight: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateRows: "1fr auto", gap: spacingTokens.sm }}>
+          <section style={{ overflowY: "auto", padding: `${spacingTokens.md} 0`, minWidth: 0, borderRight: `1px solid ${theme.colors.border}`, display: "grid", gridTemplateRows: "1fr auto", gap: spacingTokens.sm }}>
             <div style={{ minHeight: 0 }}>
             {mainView === "profile" ? (
               showProfileSettings ? (
@@ -1883,7 +1869,6 @@ export const App = () => {
                     setCurrentUser(undefined);
                     setNeedsOnboarding(false);
                     setMainView("for-you");
-                    setMenuOpen(false);
                   }}
                   onThemePreferenceChanged={onThemePreferenceChanged}
                   themePreference={themePreference}
@@ -2066,7 +2051,15 @@ export const App = () => {
                     <DropdownMenu.Content>
                       <DropdownMenu.Item onSelect={() => requestShelfEditor(item.catalogItemId)}>Edit progress</DropdownMenu.Item>
                       <DropdownMenu.Separator />
-                      <DropdownMenu.Item color="red" onSelect={() => { void onRemoveShelfItem(item.catalogItemId); }}>Remove from shelf</DropdownMenu.Item>
+                      <DropdownMenu.Item
+                        color="red"
+                        onSelect={() => {
+                          // Queue this removal behind a confirmation dialog so shelf entries are not removed on a single tap.
+                          setPendingSidebarShelfRemoval(item);
+                        }}
+                      >
+                        Remove from shelf
+                      </DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Root>
                 </article>
@@ -2223,6 +2216,37 @@ export const App = () => {
           importEndpoint={`${FUNCTIONS_URL}/catalog-import`}
         />
       ) : null}
+
+      <AlertDialog.Root
+        open={pendingSidebarShelfRemoval != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setPendingSidebarShelfRemoval(null);
+          }
+        }}
+      >
+        <AlertDialog.Content maxWidth="360px">
+          <AlertDialog.Title>Remove from shelf?</AlertDialog.Title>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button
+                color="red"
+                onClick={() => {
+                  if (pendingSidebarShelfRemoval) {
+                    void onRemoveShelfItem(pendingSidebarShelfRemoval.catalogItemId);
+                  }
+                  setPendingSidebarShelfRemoval(null);
+                }}
+              >
+                Remove
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
 
       {showCreateGroupSheet ? (
         <Box
