@@ -1,6 +1,6 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type GroupReactionPill = {
   emoji: string;
@@ -19,6 +19,7 @@ type FeedPost = {
   isSpoilerHidden?: boolean;
   reactionCount: number;
   viewerHasReacted: boolean;
+  canDelete?: boolean;
   groupReactionPills?: GroupReactionPill[];
 };
 
@@ -34,6 +35,9 @@ type PublicFeedScreenProps = {
   mode?: "public" | "group";
   onToggleReaction?: (postId: string, source: "double_click" | "pill_click") => void;
   onToggleGroupEmojiReaction?: (postId: string, emoji: string) => void;
+  onDeletePost?: (postId: string) => void;
+  onSharePost?: (postId: string) => void;
+  onReportPost?: (postId: string) => void;
 };
 
 const formatRelativeTimestamp = (
@@ -76,8 +80,31 @@ export const PublicFeedScreen = ({
   mode = "public",
   onToggleReaction,
   onToggleGroupEmojiReaction,
+  onDeletePost,
+  onSharePost,
+  onReportPost,
 }: PublicFeedScreenProps) => {
   const [pickerForPostId, setPickerForPostId] = useState<string | null>(null);
+  const [hoveredPostId, setHoveredPostId] = useState<string | null>(null);
+  const [menuForPostId, setMenuForPostId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuForPostId) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuForPostId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [menuForPostId]);
 
   const renderTimestamp = (createdAt: string) => (
     <small
@@ -116,12 +143,22 @@ export const PublicFeedScreen = ({
           onDoubleClick={() => {
             onToggleReaction?.(post.id, "double_click");
           }}
+          onMouseEnter={() => setHoveredPostId(String(post.id))}
+          onMouseLeave={() => {
+            setHoveredPostId((current) => (current === String(post.id) ? null : current));
+            setMenuForPostId((current) => (current === String(post.id) ? null : current));
+          }}
           style={{
             display: "grid",
             gridTemplateColumns: "44px minmax(0, 1fr)",
             columnGap: spacingTokens.sm,
             padding: spacingTokens.md,
             borderBottom: `1px solid ${theme.colors.border}`,
+            backgroundColor:
+              hoveredPostId === String(post.id)
+                ? theme.colors.surfaceMuted ?? `${theme.colors.textPrimary}08`
+                : "transparent",
+            transition: "background-color 140ms ease",
           }}
         >
           <img
@@ -135,7 +172,82 @@ export const PublicFeedScreen = ({
             }}
             loading="lazy"
           />
-          <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+          <div style={{ display: "grid", gap: 4, minWidth: 0, position: "relative" }}>
+            {hoveredPostId === String(post.id) ? (
+              <div ref={menuRef} style={{ position: "absolute", top: 0, right: 0 }}>
+                <button
+                  type="button"
+                  aria-label="Post options"
+                  onClick={() => {
+                    setMenuForPostId((current) => (current === String(post.id) ? null : String(post.id)));
+                  }}
+                  style={{
+                    border: `1px solid ${theme.colors.border}`,
+                    background: theme.colors.surface,
+                    color: theme.colors.textSecondary,
+                    borderRadius: 999,
+                    width: 24,
+                    height: 24,
+                    cursor: "pointer"
+                  }}
+                >
+                  ⋯
+                </button>
+                {menuForPostId === String(post.id) ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: 28,
+                      minWidth: 160,
+                      border: `1px solid ${theme.colors.border}`,
+                      borderRadius: 10,
+                      background: theme.colors.surface,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+                      padding: 4,
+                      display: "grid",
+                      gap: 2,
+                      zIndex: 25
+                    }}
+                  >
+                    {mode === "public" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuForPostId(null);
+                          onSharePost?.(String(post.id));
+                        }}
+                        style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: theme.colors.textPrimary }}
+                      >
+                        Share post
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuForPostId(null);
+                        onReportPost?.(String(post.id));
+                      }}
+                      style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: theme.colors.textPrimary }}
+                    >
+                      Report post
+                    </button>
+                    {post.canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuForPostId(null);
+                          onDeletePost?.(String(post.id));
+                        }}
+                        style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: "#dc2626" }}
+                      >
+                        Delete post
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div
               style={{
                 display: "flex",

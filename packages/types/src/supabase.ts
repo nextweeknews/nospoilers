@@ -16,6 +16,7 @@ export type SupabaseGroupRow = {
 
 export type SupabasePostRow = {
   id: string;
+  author_user_id: string;
   body_text: string | null;
   created_at: string;
   status: string;
