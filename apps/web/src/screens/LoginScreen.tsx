@@ -2,6 +2,7 @@ import { FormEvent, type CSSProperties, useEffect, useMemo, useRef, useState } f
 import type { Session, User } from "@supabase/supabase-js";
 import type { ProviderLoginResult } from "../../../../services/auth/src";
 import { elevationTokens, radiusTokens, spacingTokens, typographyTokens, type AppTheme } from "@nospoilers/ui";
+import { Card, Flex, Heading, Text } from "@radix-ui/themes";
 import {
   getSession,
   onAuthStateChange,
@@ -422,7 +423,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
   );
 
   return (
-    <section
+    <Card
       style={{
         width: "min(430px, 100%)",
         minHeight: "min(860px, 100vh - 24px)",
@@ -436,7 +437,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         gap: spacingTokens.lg
       }}
     >
-      <header style={{ textAlign: "center", display: "grid", gap: spacingTokens.sm }}>
+      <Flex direction="column" align="center" gap="2" style={{ textAlign: "center" }}>
         <div
           style={{
             margin: "0 auto",
@@ -453,10 +454,11 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
         >
           N
         </div>
-        <h1 style={{ margin: 0, color: theme.colors.textPrimary }}>NoSpoilers</h1>
-        <p style={{ margin: 0, color: theme.colors.textSecondary }}>Sign in to join your spoiler-safe feed</p>
-      </header>
+        <Heading as="h1" size="6" style={{ margin: 0, color: theme.colors.textPrimary }}>NoSpoilers</Heading>
+        <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>Sign in to join your spoiler-safe feed</Text>
+      </Flex>
 
+      {/* Keep all existing auth handlers intact; this change only swaps top-level presentation primitives. */}
       <div style={{ display: "grid", alignContent: "center", gap: spacingTokens.md }}>
         {authView === "phone" ? (
           <>
@@ -664,7 +666,7 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
           </button>
         )}
       </footer>
-    </section>
+    </Card>
   );
 };
 

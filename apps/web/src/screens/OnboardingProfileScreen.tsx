@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { Button, Card, Flex, Heading, Text, TextField } from "@radix-ui/themes";
 import { authService } from "../services/authClient";
 import { supabaseClient } from "../services/supabaseClient";
 import { checkUsernameAvailability } from "../services/username";
@@ -260,20 +261,20 @@ export const OnboardingProfileScreen = ({
   };
 
   return (
-    <section style={cardStyle(theme)}>
-      <h2 style={{ margin: 0, color: theme.colors.textPrimary }}>Complete your profile</h2>
-      <small style={{ color: theme.colors.textSecondary, fontWeight: 600 }}>Step {step} of 2</small>
-      <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+    <Card style={cardStyle(theme)}><Flex direction="column" gap="3">
+      <Heading as="h2" size="4" style={{ margin: 0, color: theme.colors.textPrimary }}>Complete your profile</Heading>
+      <Text size="1" style={{ color: theme.colors.textSecondary, fontWeight: 600 }}>Step {step} of 2</Text>
+      <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>
         {step === 1
           ? "Pick a unique username so friends can find you and mentions stay unambiguous."
           : "Add optional profile details now, or skip and personalize later."}
-      </p>
+      </Text>
 
       {step === 1 ? (
         <>
           <label style={labelStyle(theme)}>
             Username
-            <input
+            <TextField.Root
               value={username}
               onChange={(event) => {
                 const nextUsername = event.target.value.toLowerCase();
@@ -303,7 +304,7 @@ export const OnboardingProfileScreen = ({
             </small>
           </label>
 
-          <button
+          <Button
             type="button"
             style={buttonStyle(theme)}
             disabled={saving || checkingUsername || usernameFeedback.tone === "error" || !username.trim()}
@@ -330,7 +331,7 @@ export const OnboardingProfileScreen = ({
             }}
           >
             Continue
-          </button>
+          </Button>
         </>
       ) : (
         <>
@@ -404,8 +405,8 @@ export const OnboardingProfileScreen = ({
       </button>
 
       {fieldErrors.general ? <small style={{ color: "#d14343" }}>{fieldErrors.general}</small> : null}
-      <small style={{ color: theme.colors.success }}>{status}</small>
-    </section>
+      <Text size="1" style={{ color: theme.colors.success }}>{status}</Text>
+    </Flex></Card>
   );
 };
 
