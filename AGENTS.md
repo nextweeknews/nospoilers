@@ -2,15 +2,15 @@ Include detailed but plain-language comments within the codebase when adding or 
 Generated summaries should include plain-language descriptions of the additions or changes.
 
 # Where possible, use Radix Themes for styling:
-Radix Themes (@radix-ui/themes) is an open-source React component library optimized for fast development, easy maintenance, and accessibility. It provides a comprehensive set of pre-styled, themeable UI components built on top of Radix Primitives.
-License: MIT
-Documentation: https://www.radix-ui.com/themes/docs/theme
+- Radix Themes (@radix-ui/themes) is an open-source React component library optimized for fast development, easy maintenance, and accessibility. It provides a comprehensive set of pre-styled, themeable UI components built on top of Radix Primitives.
+- License: MIT
+- Documentation: https://www.radix-ui.com/themes/docs/theme
 
 The full docs for this project are hosted at:
-Theme overview: https://www.radix-ui.com/themes/docs/theme/overview
-Component docs: https://www.radix-ui.com/themes/docs/components (e.g., .../components/button, .../components/dialog)
-Utilities: https://www.radix-ui.com/themes/docs/utilities/box
-Releases: https://www.radix-ui.com/themes/docs/overview/releases
+- Theme overview: https://www.radix-ui.com/themes/docs/theme/overview
+- Component docs: https://www.radix-ui.com/themes/docs/components (e.g., .../components/button, .../components/dialog)
+- Utilities: https://www.radix-ui.com/themes/docs/utilities/box
+- Releases: https://www.radix-ui.com/themes/docs/overview/releases
 When you need to understand a component's API, intended behavior, or usage patterns, consult the docs at the URLs above rather than guessing.
 
 # Here is the Supabase SQL schema for this project:
