@@ -1050,7 +1050,10 @@ export const App = () => {
       const postIdStr = String(postId);
       if (!currentUser) return;
     
-      const hadReacted = reactedPostIds.has(postIdStr);
+      const hadReacted =
+        posts.some((p) => String(p.id) === postIdStr && p.viewerHasReacted) ||
+        groupPosts.some((p) => String(p.id) === postIdStr && p.viewerHasReacted) ||
+        reactedPostIds.has(postIdStr);
     
       // Double click is "react only"
       if (source === "double_click" && hadReacted) return;
