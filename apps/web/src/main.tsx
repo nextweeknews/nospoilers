@@ -28,7 +28,14 @@ if (!document.getElementById(typographyStyleTagId)) {
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <Theme>
+  // This Theme setup keeps the existing cool-blue look while using Radix color scales and typography.
+  <Theme
+    accentColor="blue"
+    grayColor="slate"
+    radius="medium"
+    scaling="100%"
+    panelBackground="solid"
+  >
     <App />
   </Theme>
 );
