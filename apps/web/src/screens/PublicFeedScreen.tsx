@@ -13,6 +13,9 @@ import {
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
 
+const REACT_ICON_PATH = "/graphics/react.svg";
+const NO_REACT_ICON_PATH = "/graphics/noreact.svg";
+
 type GroupReactionPill = {
   emoji: string;
   count: number;
@@ -142,6 +145,13 @@ export const PublicFeedScreen = ({
       {posts.map((post) => {
         const isPostHovered = hoveredPostId === String(post.id);
         const isReactionHovered = hoveredReactionPostId === String(post.id);
+        // We keep icon choice and color separate so the state rules stay easy to read:
+        // - reacted posts use the filled heart asset in accent green,
+        // - not reacted posts use the outlined asset and switch from gray to accent green on hover.
+        const reactionIconPath = post.viewerHasReacted ? REACT_ICON_PATH : NO_REACT_ICON_PATH;
+        const reactionIconColor = post.viewerHasReacted || isReactionHovered
+          ? theme.colors.accent
+          : theme.colors.textSecondary;
 
         return (
           <Card
@@ -358,7 +368,24 @@ export const PublicFeedScreen = ({
                       color: theme.colors.textSecondary,
                     }}
                   >
-                    {post.viewerHasReacted ? "❤" : "♡"} {post.reactionCount}
+                    {/* Render the provided SVG heart assets as a mask so we can tint them to match hover and reacted states. */}
+                    <Box
+                      aria-hidden="true"
+                      style={{
+                        width: 14,
+                        height: 14,
+                        backgroundColor: reactionIconColor,
+                        WebkitMaskImage: `url(${reactionIconPath})`,
+                        WebkitMaskSize: "contain",
+                        WebkitMaskRepeat: "no-repeat",
+                        WebkitMaskPosition: "center",
+                        maskImage: `url(${reactionIconPath})`,
+                        maskSize: "contain",
+                        maskRepeat: "no-repeat",
+                        maskPosition: "center",
+                      }}
+                    />{" "}
+                    {post.reactionCount}
                   </Button>
                 )}
                 <Separator size="4" style={{ marginTop: 2 }} />
