@@ -17,7 +17,10 @@
     "@nospoilers/ui": "0.1.0",
     "@supabase/supabase-js": "^2.57.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@supabase/supabase-js": "^2.57.4",
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
