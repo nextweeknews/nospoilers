@@ -1,6 +1,7 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useState } from "react";
+import "emoji-picker-react/dist/universal/style.css";
 
 type GroupReactionPill = {
   emoji: string;
