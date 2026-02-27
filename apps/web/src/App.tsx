@@ -575,7 +575,7 @@ export const App = () => {
         } else {
           const groupFeedResult = await supabaseClient
             .from("posts")
-            .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
+            .select("id,author_user_id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
             .in("group_id", groupIds)
             .eq("status", "published")
             .is("deleted_at", null)
@@ -651,6 +651,7 @@ export const App = () => {
                   catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
                 }),
                 ...mapPostWithReactionState(post, reactedPostIds, reactionCountsByPostId),
+                canDelete: String(post.author_user_id) === currentUser.id,
                 groupReactionPills: pillsByPostId.get(String(post.id)) ?? []
               }))
             );
@@ -808,7 +809,7 @@ export const App = () => {
 
       const postResult = await supabaseClient
         .from("posts")
-        .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
+        .select("id,author_user_id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent,users!posts_author_user_id_fkey(display_name,username,avatar_path),catalog_items!posts_catalog_item_id_fkey(title),catalog_progress_units!posts_progress_unit_id_fkey(season_number,episode_number,title)")
         .eq("status", "published")
         .is("deleted_at", null)
         .is("group_id", null)
@@ -837,7 +838,8 @@ export const App = () => {
             book_percent?: number | null;
             catalog_progress_units?: { season_number?: number | null; episode_number?: number | null; title?: string | null } | Array<{ season_number?: number | null; episode_number?: number | null; title?: string | null }> | null;
           }),
-          ...mapPostWithReactionState(post, nextReactedPostIds, nextReactionCountsByPostId)
+          ...mapPostWithReactionState(post, nextReactedPostIds, nextReactionCountsByPostId),
+          canDelete: String(post.author_user_id) === currentUser.id
         }));
         setPosts(loadedPosts);
         setFeedStatus(loadedPosts.length ? "ready" : "empty");
@@ -1101,7 +1103,46 @@ export const App = () => {
   const defaultCreatePostGroupId = mainView === "groups" && selectedGroupId ? selectedGroupId : undefined;
   const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
 
-    const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
+  const onSharePost = (postId: string) => {
+    console.info("[app] share post placeholder", { postId });
+  };
+
+  const onReportPost = (postId: string) => {
+    console.info("[app] report post placeholder", { postId });
+  };
+
+  const onDeletePost = async (postId: string) => {
+    if (!currentUser) return;
+
+    const postIdNum = Number(postId);
+    if (!Number.isFinite(postIdNum)) return;
+
+    const { error } = await supabaseClient.rpc("soft_delete_post", {
+      p_post_id: postIdNum,
+      p_user_id: currentUser.id
+    });
+
+    if (error) {
+      console.error("[app] failed to delete post", error);
+      return;
+    }
+
+    const postIdStr = String(postIdNum);
+    setPosts((prev) => prev.filter((post) => String(post.id) !== postIdStr));
+    setGroupPosts((prev) => prev.filter((post) => String(post.id) !== postIdStr));
+    setReactedPostIds((prev) => {
+      const next = new Set(prev);
+      next.delete(postIdStr);
+      return next;
+    });
+    setReactionCountsByPostId((prev) => {
+      const next = new Map(prev);
+      next.delete(postIdStr);
+      return next;
+    });
+  };
+
+  const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
       const postIdStr = String(postId);
       if (!currentUser) return;
     
@@ -1743,7 +1784,7 @@ export const App = () => {
               )
             ) : null}
 
-            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} mode="public" onToggleReaction={onTogglePostReaction} /> : null}
+            {mainView === "for-you" ? <PublicFeedScreen theme={theme} status={feedStatus} errorMessage={feedError} posts={selectedShelfPosts} emptyMessage={selectedShelfCatalogItemId ? "No posts for this title yet." : "No public posts yet."} showCatalogContext={!selectedShelfCatalogItemId} mode="public" onToggleReaction={onTogglePostReaction} onDeletePost={onDeletePost} onSharePost={onSharePost} onReportPost={onReportPost} /> : null}
 
             {mainView === "groups" ? (
               selectedGroup ? (
@@ -1762,6 +1803,8 @@ export const App = () => {
                     showCatalogContext={!selectedGroupCatalogItemId}
                     mode="group"
                     onToggleGroupEmojiReaction={onToggleGroupEmojiReaction}
+                    onDeletePost={onDeletePost}
+                    onReportPost={onReportPost}
                   />
                 </>
               ) : (
@@ -1818,7 +1861,7 @@ export const App = () => {
                     const { data: inserted, error } = await supabaseClient
                       .from("posts")
                       .insert(postInsertPayload)
-                      .select("id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent")
+                      .select("id,author_user_id,body_text,created_at,status,deleted_at,group_id,catalog_item_id,progress_unit_id,book_page,book_percent")
                       .single();
 
                     if (error || !inserted) {
@@ -1850,7 +1893,8 @@ export const App = () => {
                       catalogItemTitle: shelfItems.find((item) => item.catalogItemId === String((inserted as SupabasePostRow).catalog_item_id))?.title,
                       progressLine: formatPostProgressLine(inserted as SupabasePostRow),
                       reactionCount: 0,
-                      viewerHasReacted: false
+                      viewerHasReacted: false,
+                      canDelete: true
                     };
 
                     if ((inserted as { group_id?: string | number | null }).group_id == null) {
