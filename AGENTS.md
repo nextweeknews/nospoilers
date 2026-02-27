@@ -13,7 +13,7 @@ The full docs for this project are hosted at:
 - Releases: https://www.radix-ui.com/themes/docs/overview/releases
 - When referenced, Radix icons refer to this collection: https://www.radix-ui.com/icons
 - A select number of Radix primitives have been added as styles:
--   [Accordion](https://www.radix-ui.com/primitives/docs/components/accordion)
+-   Accordion: https://www.radix-ui.com/primitives/docs/components/accordion
 - When you need to understand a component's API, intended behavior, or usage patterns, consult the docs at the URLs above rather than guessing.
 
 
