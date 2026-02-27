@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   Flex,
   Heading,
+  Separator,
   SegmentedControl,
   Text,
   TextField
@@ -315,10 +316,22 @@ export const ProfileTabScreen = ({
 
         {editingItem ? (
           <Box style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 20, padding: spacingTokens.lg }}>
-            {/* This Radix card replaces the old ad-hoc modal and keeps save/cancel actions clear and stable. */}
+            {/* This card intentionally uses only Radix primitives so the editor stays visually consistent and predictable. */}
             <Card style={{ width: "min(640px, 95vw)", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}>
-              <Heading as="h3" size="4" style={{ margin: 0 }}>Update progress</Heading>
-              <Text size="2" color="gray">{editingItem.title}</Text>
+              {/* This header keeps artwork and title together so users can confirm they are editing the intended title. */}
+              <Flex align="center" gap="3">
+                <Avatar
+                  src={editingItem.coverImageUrl || coverFallback(editingItem.title)}
+                  fallback={editingItem.title.slice(0, 1).toUpperCase()}
+                  radius="small"
+                  size="6"
+                />
+                <Box>
+                  <Heading as="h3" size="4" style={{ margin: 0 }}>Update progress</Heading>
+                  <Text size="2" color="gray">{editingItem.title}</Text>
+                </Box>
+              </Flex>
+              <Separator size="4" />
 
               {editingItem.itemType === "book" ? (
                 <Card variant="surface" style={{ display: "grid", gap: spacingTokens.sm }}>
@@ -339,10 +352,15 @@ export const ProfileTabScreen = ({
                   </Flex>
 
                   <Flex justify="between" align="center">
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, color: theme.colors.textPrimary }}>
+                    <Flex align="center" gap="2">
                       <Checkbox checked={markBookCompleted} onCheckedChange={(checked) => setMarkBookCompleted(Boolean(checked))} />
-                      Mark as complete
-                    </label>
+                      <Text size="2">Mark as complete</Text>
+                    </Flex>
+                  </Flex>
+
+                  {/* The footer keeps cancel on the left and save on the right so action order is stable across book and TV editors. */}
+                  <Flex justify="end" gap="2">
+                    <Button type="button" color="gray" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
                     <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
                   </Flex>
                 </Card>
@@ -377,13 +395,13 @@ export const ProfileTabScreen = ({
                           </Accordion.Header>
                           <Accordion.Content style={{ padding: "0 12px 10px", display: "grid", gap: 6, background: theme.colors.surfaceMuted }}>
                             {episodes.map((episode) => (
-                              <label key={episode.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <Flex key={episode.id} justify="between" align="center" gap="2">
                                 <Text size="1">E{episode.episodeNumber} • {episode.title ?? "Untitled"}</Text>
                                 <Checkbox
                                   checked={Boolean(selectedEpisodes[episode.id])}
                                   onCheckedChange={(checked) => setSelectedEpisodes((prev) => ({ ...prev, [episode.id]: Boolean(checked) }))}
                                 />
-                              </label>
+                              </Flex>
                             ))}
                           </Accordion.Content>
                         </Accordion.Item>
@@ -392,19 +410,13 @@ export const ProfileTabScreen = ({
                   </Accordion.Root>
 
                   <Flex justify="end" gap="2">
-                    <Button type="button" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
+                    <Button type="button" color="gray" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
                     <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
                   </Flex>
                 </Card>
               )}
 
               {formError ? <Text size="1" style={{ color: "var(--red-9)" }}>{formError}</Text> : null}
-
-              {editingItem.itemType === "book" ? (
-                <Flex justify="end">
-                  <Button type="button" variant="soft" onClick={closeEditor} disabled={saving}>Close</Button>
-                </Flex>
-              ) : null}
             </Card>
           </Box>
         ) : null}
