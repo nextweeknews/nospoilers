@@ -1,5 +1,5 @@
 Include detailed but plain-language comments within the codebase when adding or changing sections.
-Summaries should include plain-language descriptions of the additions or changes.
+Generated summaries should include plain-language descriptions of the additions or changes.
 
 # Where possible, use Radix Themes for styling:
 Radix Themes (@radix-ui/themes) is an open-source React component library optimized for fast development, easy maintenance, and accessibility. It provides a comprehensive set of pre-styled, themeable UI components built on top of Radix Primitives.
