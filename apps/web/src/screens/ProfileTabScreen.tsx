@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
+import { Avatar, Box, Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser } from "../../../../services/auth/src";
 
 export type TvEpisodeProgressUnit = {
@@ -217,14 +218,16 @@ export const ProfileTabScreen = ({
   }, [editingItem]);
 
   return (
-    <section style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}>
-      <img src={user.avatarUrl} alt="avatar" style={{ width: 72, height: 72, borderRadius: 999, objectFit: "cover", background: theme.colors.surfaceMuted }} />
-      <strong style={{ color: theme.colors.textPrimary }}>@{user.username ?? "pending"}</strong>
-      <p style={{ margin: 0, color: theme.colors.textSecondary }}>{user.displayName ?? "No display name"}</p>
-      <div style={{ display: "flex", gap: spacingTokens.sm }}>
-        <button type="button" onClick={onEditProfile}>Edit profile</button>
-        <button type="button" onClick={onAccountSettings}>Account settings</button>
-      </div>
+    <Card style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg }}>
+      {/* Move profile header and shelf rows into Radix primitives so spacing and typography are more consistent. */}
+      <Flex direction="column" gap="3">
+      <Avatar src={user.avatarUrl} fallback={(user.displayName ?? user.username ?? "U").slice(0, 1).toUpperCase()} size="6" radius="full" alt="avatar" />
+      <Heading as="h3" size="4" style={{ color: theme.colors.textPrimary, margin: 0 }}>@{user.username ?? "pending"}</Heading>
+      <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>{user.displayName ?? "No display name"}</Text>
+      <Flex gap="2">
+        <Button type="button" variant="soft" onClick={onEditProfile}>Edit profile</Button>
+        <Button type="button" variant="soft" onClick={onAccountSettings}>Account settings</Button>
+      </Flex>
 
       <section style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm, display: "grid", gap: 8 }}>
         <h4 style={{ margin: 0, color: theme.colors.textPrimary }}>Shelf</h4>
@@ -377,6 +380,7 @@ export const ProfileTabScreen = ({
           </div>
         </div>
       ) : null}
-    </section>
+          </Flex>
+    </Card>
   );
 };

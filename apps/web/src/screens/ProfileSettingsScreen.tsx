@@ -1,6 +1,18 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState } from "react";
 import type { AuthUser } from "../../../../services/auth/src";
-import { radiusTokens, spacingTokens, type AppTheme, type ThemePreference } from "@nospoilers/ui";
+import { type AppTheme, type ThemePreference } from "@nospoilers/ui";
+import {
+  Box,
+  Button,
+  Card,
+  Dialog,
+  Flex,
+  Heading,
+  Select,
+  Separator,
+  Text,
+  TextField,
+} from "@radix-ui/themes";
 import { authService, deleteAccount, getAuthUser, linkEmailPasswordIdentity, linkGoogleIdentity, linkPhoneIdentity, reauthenticateForIdentityLink, verifyPhoneChangeOtp } from "../services/authClient";
 
 type ProfileSettingsScreenProps = {
@@ -35,297 +47,124 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   }, [user]);
 
   const refreshIdentityState = async () => {
-    if (!user) {
-      return;
-    }
-
+    if (!user) return;
     const { data, error } = await getAuthUser();
     if (error || !data.user) {
       setStatus(error?.message ?? "Unable to refresh identity status.");
       return;
     }
-
     const identities = (data.user.identities ?? []).map((identity) => ({
       provider: identity.provider === "sms" ? "phone" : (identity.provider as "phone" | "google" | "email"),
       subject: identity.identity_id,
       verified: Boolean(identity.last_sign_in_at)
     }));
-
-    onProfileUpdated({
-      ...user,
-      email: data.user.email,
-      primaryPhone: data.user.phone,
-      identities
-    });
+    onProfileUpdated({ ...user, email: data.user.email, primaryPhone: data.user.phone, identities });
   };
 
   if (!user) {
-    return <section style={cardStyle(theme)}>Sign in first, then open Account to edit your profile.</section>;
+    return (
+      <Card>
+        <Text>Sign in first, then open Account to edit your profile.</Text>
+      </Card>
+    );
   }
 
   return (
-    <section style={cardStyle(theme)}>
-      <h2 style={{ margin: 0 }}>Account settings</h2>
+    <Card style={{ border: `1px solid ${theme.colors.border}` }}>
+      <Flex direction="column" gap="3">
+        <Heading as="h2" size="4">Account settings</Heading>
 
-      <div style={rowStyle}>
-        <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" style={inputStyle(theme)} />
-        <button
-          style={buttonStyle(theme)}
-          onClick={async () => {
-            const updatedUser = await authService.updateProfile(user.id, { displayName });
-            setStatus(`Display name saved: ${updatedUser.displayName ?? "(none)"}`);
-            onProfileUpdated(updatedUser);
-          }}
-        >
-          Save display name
-        </button>
-      </div>
+        {/* Keep each action in the same two-column Radix layout so button behavior stays unchanged while visuals are standardized. */}
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" /></Box>
+          <Button onClick={async () => { const updatedUser = await authService.updateProfile(user.id, { displayName }); setStatus(`Display name saved: ${updatedUser.displayName ?? "(none)"}`); onProfileUpdated(updatedUser); }}>Save display name</Button>
+        </Flex>
 
-      <div style={rowStyle}>
-        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" style={inputStyle(theme)} />
-        <button
-          style={buttonStyle(theme)}
-          onClick={async () => {
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" /></Box>
+          <Button onClick={async () => {
             const availability = await authService.checkUsernameAvailability(username);
-            if (!availability.available) {
-              setStatus(`Username unavailable (${availability.reason ?? "unknown"}).`);
-              return;
-            }
+            if (!availability.available) { setStatus(`Username unavailable (${availability.reason ?? "unknown"}).`); return; }
             await authService.reserveUsername(username, user.id);
             const updatedUser = await authService.updateProfile(user.id, { username });
             setStatus(`Username set to @${updatedUser.username}`);
             onProfileUpdated(updatedUser);
-          }}
-        >
-          Reserve + save username
-        </button>
-      </div>
+          }}>Reserve + save username</Button>
+        </Flex>
 
-      <label style={{ color: theme.colors.textSecondary }}>
-        Theme preference
-        <select
-          style={{ ...inputStyle(theme), marginTop: 8 }}
-          value={themePreference}
-          onChange={async (event) => {
-            const next = event.target.value as ThemePreference;
-            const updatedUser = await authService.updateProfile(user.id, { themePreference: next });
-            onProfileUpdated(updatedUser);
-            onThemePreferenceChanged(next);
-            setStatus(`Theme preference saved as ${next}.`);
-          }}
-        >
-          <option value="system">Use system setting</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </label>
+        <Flex direction="column" gap="1">
+          <Text size="2" style={{ color: theme.colors.textSecondary }}>Theme preference</Text>
+          <Select.Root
+            value={themePreference}
+            onValueChange={async (next) => {
+              const value = next as ThemePreference;
+              const updatedUser = await authService.updateProfile(user.id, { themePreference: value });
+              onProfileUpdated(updatedUser);
+              onThemePreferenceChanged(value);
+              setStatus(`Theme preference saved as ${value}.`);
+            }}
+          >
+            <Select.Trigger />
+            <Select.Content>
+              <Select.Item value="system">Use system setting</Select.Item>
+              <Select.Item value="light">Light</Select.Item>
+              <Select.Item value="dark">Dark</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </Flex>
 
-      <div style={rowStyle}>
-        <input value={avatarFileName} onChange={(event) => setAvatarFileName(event.target.value)} placeholder="avatar.png" style={inputStyle(theme)} />
-        <button
-          style={buttonStyle(theme)}
-          onClick={async () => {
-            const upload = await authService.createAvatarUploadPlan(user.id, {
-              fileName: avatarFileName,
-              contentType: "image/png",
-              bytes: 220_000,
-              width: 512,
-              height: 512
-            });
-            const updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, {
-              contentType: "image/png",
-              bytes: 220_000,
-              width: 512,
-              height: 512
-            });
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={avatarFileName} onChange={(event) => setAvatarFileName(event.target.value)} placeholder="avatar.png" /></Box>
+          <Button onClick={async () => {
+            const upload = await authService.createAvatarUploadPlan(user.id, { fileName: avatarFileName, contentType: "image/png", bytes: 220_000, width: 512, height: 512 });
+            const updatedUser = await authService.finalizeAvatarUpload(user.id, upload.uploadId, { contentType: "image/png", bytes: 220_000, width: 512, height: 512 });
             setStatus(`Avatar updated via signed URL pipeline: ${upload.uploadUrl}`);
             onProfileUpdated(updatedUser);
-          }}
-        >
-          Update avatar
-        </button>
-      </div>
+          }}>Update avatar</Button>
+        </Flex>
 
-      <section style={{ display: "grid", gap: spacingTokens.sm, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
-        <h3 style={{ margin: 0 }}>Connected sign-in methods</h3>
-        <small style={{ color: theme.colors.textSecondary }}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</small>
+        <Separator size="4" />
+        <Heading as="h3" size="3">Connected sign-in methods</Heading>
+        <Text size="1" style={{ color: theme.colors.textSecondary }}>Phone: {identityStatus.phone ? "Connected" : "Not connected"} · Google: {identityStatus.google ? "Connected" : "Not connected"} · Email/password: {identityStatus.email ? "Connected" : "Not connected"}</Text>
 
-        <div style={rowStyle}>
-          <input value={linkPhone} onChange={(event) => setLinkPhone(event.target.value)} placeholder="+1 555 123 9876" style={inputStyle(theme)} />
-          <button
-            style={buttonStyle(theme)}
-            onClick={async () => {
-              await reauthenticateForIdentityLink();
-              const { error } = await linkPhoneIdentity(linkPhone);
-              if (error) {
-                setStatus(error.message);
-                return;
-              }
-              await refreshIdentityState();
-              setStatus("Phone link started. Verify OTP sent to complete linking.");
-            }}
-          >
-            Link phone
-          </button>
-        </div>
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={linkPhone} onChange={(event) => setLinkPhone(event.target.value)} placeholder="+1 555 123 9876" /></Box>
+          <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkPhoneIdentity(linkPhone); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Phone link started. Verify OTP sent to complete linking."); }}>Link phone</Button>
+        </Flex>
 
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={linkPhoneOtp} onChange={(event) => setLinkPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit SMS code" /></Box>
+          <Button onClick={async () => { if (linkPhoneOtp.length !== 6) { setStatus("Enter the 6-digit code sent to your new phone number."); return; } const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Phone linked and verified."); setLinkPhoneOtp(""); }}>Verify linked phone</Button>
+        </Flex>
 
-        <div style={rowStyle}>
-          <input
-            value={linkPhoneOtp}
-            onChange={(event) => setLinkPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="6-digit SMS code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            style={inputStyle(theme)}
-          />
-          <button
-            style={buttonStyle(theme)}
-            onClick={async () => {
-              if (linkPhoneOtp.length !== 6) {
-                setStatus("Enter the 6-digit code sent to your new phone number.");
-                return;
-              }
+        <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkGoogleIdentity(); if (error) { setStatus(error.message); return; } setStatus("Redirecting to Google to link identity..."); }}>Link Google</Button>
 
-              const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp);
-              if (error) {
-                setStatus(error.message);
-                return;
-              }
+        <Flex gap="2" align="center">
+          <Box style={{ flex: 1 }}><TextField.Root value={linkEmail} onChange={(event) => setLinkEmail(event.target.value)} placeholder="Email" /></Box>
+          <Box style={{ flex: 1 }}><TextField.Root type="password" value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} placeholder="Password" /></Box>
+          <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Email/password linked. Check your inbox if verification is required."); }}>Link email/password</Button>
+        </Flex>
 
-              await refreshIdentityState();
-              setStatus("Phone linked and verified.");
-              setLinkPhoneOtp("");
-            }}
-          >
-            Verify linked phone
-          </button>
-        </div>
-        <button
-          style={buttonStyle(theme)}
-          onClick={async () => {
-            await reauthenticateForIdentityLink();
-            const { error } = await linkGoogleIdentity();
-            if (error) {
-              setStatus(error.message);
-              return;
-            }
-            setStatus("Redirecting to Google to link identity...");
-          }}
-        >
-          Link Google
-        </button>
+        <Separator size="4" />
+        <Heading as="h3" size="3" color="red">Delete account</Heading>
+        <Text size="1" style={{ color: theme.colors.textSecondary }}>This action permanently deletes your profile and linked identities, revokes active sessions, and cannot be undone.</Text>
+        <TextField.Root value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} placeholder='Type "DELETE" to enable' />
+        <Button color="red" disabled={deleteConfirmation !== "DELETE"} onClick={() => { setDeleteError(undefined); setDeleteConfirmOpen(true); }}>Delete account permanently</Button>
+        {deleteError ? <Text size="1" color="red">{deleteError}</Text> : null}
 
-        <div style={rowStyle}>
-          <input value={linkEmail} onChange={(event) => setLinkEmail(event.target.value)} placeholder="Email" style={inputStyle(theme)} />
-          <input value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} type="password" placeholder="Password" style={inputStyle(theme)} />
-          <button
-            style={buttonStyle(theme)}
-            onClick={async () => {
-              await reauthenticateForIdentityLink();
-              const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword);
-              if (error) {
-                setStatus(error.message);
-                return;
-              }
-              await refreshIdentityState();
-              setStatus("Email/password linked. Check your inbox if verification is required.");
-            }}
-          >
-            Link email/password
-          </button>
-        </div>
-      </section>
+        <Dialog.Root open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <Dialog.Content>
+            <Dialog.Title>Final confirmation</Dialog.Title>
+            <Dialog.Description>Are you sure? This permanently removes your account data and signs you out of all devices.</Dialog.Description>
+            <Flex gap="2" justify="end" mt="3">
+              <Button color="red" onClick={async () => { const { error } = await deleteAccount(); if (error) { setDeleteError(error.message); setDeleteConfirmOpen(false); return; } onAccountDeleted(); }}>Yes, delete my account</Button>
+              <Button variant="soft" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+            </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
 
-      <section style={{ display: "grid", gap: spacingTokens.xs, borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm }}>
-        <h3 style={{ margin: 0, color: "#b42318" }}>Delete account</h3>
-        <small style={{ color: theme.colors.textSecondary }}>
-          This action permanently deletes your profile and linked identities, revokes active sessions, and cannot be undone.
-        </small>
-        <input
-          value={deleteConfirmation}
-          onChange={(event) => setDeleteConfirmation(event.target.value)}
-          placeholder='Type "DELETE" to enable'
-          style={inputStyle(theme)}
-        />
-        <button
-          type="button"
-          style={dangerButtonStyle(theme)}
-          disabled={deleteConfirmation !== "DELETE"}
-          onClick={() => {
-            setDeleteError(undefined);
-            setDeleteConfirmOpen(true);
-          }}
-        >
-          Delete account permanently
-        </button>
-        {deleteError ? <small style={{ color: "#b42318" }}>{deleteError}</small> : null}
-      </section>
-
-      {deleteConfirmOpen ? (
-        <div style={{ border: `1px solid ${"#b42318"}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: spacingTokens.sm }}>
-          <strong>Final confirmation</strong>
-          <small style={{ color: theme.colors.textSecondary }}>Are you sure? This permanently removes your account data and signs you out of all devices.</small>
-          <div style={{ display: "flex", gap: spacingTokens.sm }}>
-            <button type="button" style={dangerButtonStyle(theme)} onClick={async () => {
-              const { error } = await deleteAccount();
-              if (error) {
-                setDeleteError(error.message);
-                setDeleteConfirmOpen(false);
-                return;
-              }
-              onAccountDeleted();
-            }}>Yes, delete my account</button>
-            <button type="button" style={buttonStyle(theme)} onClick={() => setDeleteConfirmOpen(false)}>Cancel</button>
-          </div>
-        </div>
-      ) : null}
-
-      <small style={{ color: theme.colors.success }}>{status}</small>
-    </section>
+        <Text size="1" style={{ color: theme.colors.success }}>{status}</Text>
+      </Flex>
+    </Card>
   );
 };
-
-const cardStyle = (theme: AppTheme): CSSProperties => ({
-  background: theme.colors.surface,
-  border: `1px solid ${theme.colors.border}`,
-  borderRadius: radiusTokens.lg,
-  padding: 20,
-  color: theme.colors.textPrimary,
-  display: "grid",
-  gap: spacingTokens.sm
-});
-
-const rowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr auto",
-  gap: spacingTokens.sm
-};
-
-const inputStyle = (theme: AppTheme): CSSProperties => ({
-  background: theme.colors.surfaceMuted,
-  color: theme.colors.textPrimary,
-  borderRadius: radiusTokens.sm,
-  border: `1px solid ${theme.colors.border}`,
-  padding: "10px 12px"
-});
-
-const buttonStyle = (theme: AppTheme): CSSProperties => ({
-  background: theme.colors.accent,
-  color: theme.colors.accentText,
-  border: "none",
-  borderRadius: radiusTokens.sm,
-  padding: "10px 12px",
-  fontWeight: 600
-});
-
-const dangerButtonStyle = (theme: AppTheme): CSSProperties => ({
-  background: "#b42318",
-  color: "#fff",
-  border: "none",
-  borderRadius: radiusTokens.sm,
-  padding: "10px 12px",
-  fontWeight: 700,
-  opacity: 1
-});

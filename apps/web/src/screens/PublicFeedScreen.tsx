@@ -1,15 +1,5 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
-import {
-  Avatar,
-  Box,
-  Button,
-  Card,
-  DropdownMenu,
-  Flex,
-  Heading,
-  Separator,
-  Text,
-} from "@radix-ui/themes";
+import { Avatar, Box, Button, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -103,6 +93,8 @@ export const PublicFeedScreen = ({
   const [hoveredGroupPillKey, setHoveredGroupPillKey] = useState<string | null>(null);
   const [hoveredGroupAddPostId, setHoveredGroupAddPostId] = useState<string | null>(null);
   const [hoveredReactionPostId, setHoveredReactionPostId] = useState<string | null>(null);
+  const [openMenuPostId, setOpenMenuPostId] = useState<string | null>(null);
+  const [hoveredMenuTriggerPostId, setHoveredMenuTriggerPostId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -145,6 +137,8 @@ export const PublicFeedScreen = ({
       {posts.map((post) => {
         const isPostHovered = hoveredPostId === String(post.id);
         const isReactionHovered = hoveredReactionPostId === String(post.id);
+        const isMenuOpen = openMenuPostId === String(post.id);
+        const isMenuTriggerHovered = hoveredMenuTriggerPostId === String(post.id);
         // We keep icon choice and color separate so the state rules stay easy to read:
         // - reacted posts use the filled heart asset in accent green,
         // - not reacted posts use the outlined asset and switch from gray to accent green on hover.
@@ -154,7 +148,7 @@ export const PublicFeedScreen = ({
           : theme.colors.textSecondary;
 
         return (
-          <Card
+          <Box
             key={post.id}
             onDoubleClick={() => {
               onToggleReaction?.(post.id, "double_click");
@@ -164,8 +158,8 @@ export const PublicFeedScreen = ({
               setHoveredPostId((current) => (current === String(post.id) ? null : current));
             }}
             style={{
-              borderRadius: 12,
-              border: `1px solid ${theme.colors.border}`,
+              padding: `${spacingTokens.sm} ${spacingTokens.md}`,
+              borderBottom: `1px solid ${theme.colors.textPrimary}1A`,
               backgroundColor: isPostHovered
                 ? theme.colors.surfaceMuted ?? `${theme.colors.textPrimary}08`
                 : theme.colors.surface,
@@ -183,25 +177,32 @@ export const PublicFeedScreen = ({
                 alt={`${post.authorDisplayName} avatar`}
               />
               <Box style={{ display: "grid", gap: 6, width: "100%", minWidth: 0, position: "relative" }}>
-                {isPostHovered ? (
+                {isPostHovered || isMenuOpen ? (
                   <Box style={{ position: "absolute", top: 0, right: 0 }}>
-                    <DropdownMenu.Root>
-                      {/* We intentionally use a plain icon-only trigger so the old circular button chrome is fully removed. */}
-                      <DropdownMenu.Trigger asChild>
-                        <button
-                          type="button"
-                          aria-label="Post options"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            padding: 0,
-                            border: "none",
-                            background: "transparent",
-                            color: theme.colors.success,
-                            cursor: "pointer",
-                          }}
-                        >
+                    {/* Keep the menu open state controlled so it stays visible until a user action closes it. */}
+                    <DropdownMenu.Root
+                      open={isMenuOpen}
+                      onOpenChange={(nextOpen) => {
+                        setOpenMenuPostId(nextOpen ? String(post.id) : null);
+                      }}
+                    >
+                      <DropdownMenu.Trigger
+                        aria-label="Post options"
+                        onMouseEnter={() => setHoveredMenuTriggerPostId(String(post.id))}
+                        onMouseLeave={() => {
+                          setHoveredMenuTriggerPostId((current) =>
+                            current === String(post.id) ? null : current,
+                          );
+                        }}
+                        style={{
+                          padding: 0,
+                          color:
+                            isMenuOpen || isMenuTriggerHovered
+                              ? theme.colors.accent
+                              : theme.colors.textSecondary,
+                          cursor: "pointer",
+                        }}
+                      >
                           <svg
                             width="18"
                             height="18"
@@ -211,8 +212,7 @@ export const PublicFeedScreen = ({
                           >
                             <path d="M8.625 2.5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Z" />
                           </svg>
-                        </button>
-                      </DropdownMenu.Trigger>
+                        </DropdownMenu.Trigger>
                       <DropdownMenu.Content>
                         {mode === "public" ? (
                           <DropdownMenu.Item onSelect={() => onSharePost?.(String(post.id))}>
@@ -236,12 +236,12 @@ export const PublicFeedScreen = ({
                   </Box>
                 ) : null}
 
-                <Flex align="center" gap="2" style={{ flexWrap: "nowrap", minWidth: 0 }}>
+                <Flex align="center" gap="2" style={{ flexWrap: "nowrap", minWidth: 0, paddingRight: 24 }}>
                   <Text weight="bold" size="2" style={{ color: theme.colors.textPrimary, flexShrink: 0 }}>
                     {post.authorDisplayName}
                   </Text>
                   {showCatalogContext && post.catalogItemTitle ? (
-                    <Flex align="center" gap="2" style={{ minWidth: 0, flex: 1 }}>
+                    <Flex align="center" gap="2" style={{ minWidth: 0, flexShrink: 1 }}>
                       <Text size="1" style={{ color: theme.colors.textSecondary }} aria-hidden="true">
                         →
                       </Text>
@@ -388,10 +388,9 @@ export const PublicFeedScreen = ({
                     {post.reactionCount}
                   </Button>
                 )}
-                <Separator size="4" style={{ marginTop: 2 }} />
               </Box>
             </Flex>
-          </Card>
+          </Box>
         );
       })}
     </Box>
