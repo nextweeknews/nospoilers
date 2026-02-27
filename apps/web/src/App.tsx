@@ -1047,6 +1047,7 @@ export const App = () => {
   const defaultCreatePostCatalogItemId = mainView === "groups" ? selectedGroupCatalogItemId ?? undefined : selectedShelfCatalogItemId ?? undefined;
 
     const onTogglePostReaction = async (postId: string, source: "double_click" | "pill_click") => {
+      const postIdStr = String(postId);
       if (!currentUser) return;
     
       const hadReacted = reactedPostIds.has(postId);
