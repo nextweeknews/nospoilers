@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { Box, Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
   createTheme,
@@ -110,6 +111,9 @@ const DEFAULT_COVER_PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent(
 const HOME_ICON = "⌂";
 const FOR_YOU_ICON = "✦";
 const GROUP_FALLBACK_ICON = "👥";
+// Centralize Radix semantic colors so the page can adopt the global accent with minimal per-component styling.
+const RADIX_ERROR_TEXT = "var(--red-9)";
+const RADIX_ACCENT_TINT = "var(--accent-a5)";
 
 const TRENDING_COUNT_FIELDS: Record<TrendingTimeframe, string[]> = {
   all_time: ["count_all_time", "adds_all_time", "all_time_count", "lifetime_count"]
@@ -1439,57 +1443,57 @@ export const App = () => {
 
   if (pathname === "/auth/callback") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: theme.colors.background,
-          padding: spacingTokens.lg
-        }}
+      <Flex
+        align="center"
+        justify="center"
+        p="6"
+        style={{ minHeight: "100vh", background: theme.colors.background }}
       >
-        <AuthCallbackScreen theme={theme} />
-      </div>
+        {/* Keep auth callback centered in a themed Radix layout container so spacing and background are consistent. */}
+        <Card size="3" style={{ width: "min(560px, 100%)", background: theme.colors.surface }}>
+          <AuthCallbackScreen theme={theme} />
+        </Card>
+      </Flex>
     );
   }
 
   if (!currentUser) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: theme.colors.background,
-          padding: spacingTokens.lg
-        }}
+      <Flex
+        align="center"
+        justify="center"
+        p="6"
+        style={{ minHeight: "100vh", background: theme.colors.background }}
       >
-        <LoginScreen onSignedIn={onSignedIn} theme={theme} />
-      </div>
+        {/* Wrap the login view in a Radix card so the unauthenticated shell already matches the app theme. */}
+        <Card size="3" style={{ width: "min(560px, 100%)", background: theme.colors.surface }}>
+          <LoginScreen onSignedIn={onSignedIn} theme={theme} />
+        </Card>
+      </Flex>
     );
   }
 
   if (needsOnboarding) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "grid",
-          placeItems: "center",
-          background: theme.colors.background,
-          padding: spacingTokens.lg
-        }}
+      <Flex
+        align="center"
+        justify="center"
+        p="6"
+        style={{ minHeight: "100vh", background: theme.colors.background }}
       >
-        <OnboardingProfileScreen
-          user={currentUser}
-          theme={theme}
-          onProfileCompleted={(user) => {
-            setCurrentUser(user);
-            setNeedsOnboarding(false);
-          }}
-          onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
-        />
-      </div>
+        {/* Use the same Radix shell for onboarding to provide a uniform first-run experience. */}
+        <Card size="3" style={{ width: "min(680px, 100%)", background: theme.colors.surface }}>
+          <OnboardingProfileScreen
+            user={currentUser}
+            theme={theme}
+            onProfileCompleted={(user) => {
+              setCurrentUser(user);
+              setNeedsOnboarding(false);
+            }}
+            onChooseDifferentLoginMethod={onChooseDifferentLoginMethod}
+          />
+        </Card>
+      </Flex>
     );
   }
 
@@ -1513,6 +1517,7 @@ export const App = () => {
         }}
       >
         <style>{`
+          /* Keep native controls smooth while still allowing Radix components to drive most visual styling. */
           button, select {
             border-radius: ${radiusTokens.pill}px;
             transition: box-shadow 140ms ease, border-color 140ms ease, filter 140ms ease;
@@ -1825,7 +1830,7 @@ export const App = () => {
                 <p style={{ margin: 0, color: theme.colors.textSecondary }}>Select a group from the left column.</p>
               )
             ) : null}
-            {catalogSearchError ? <small style={{ color: "#b42318" }}>Catalog search/import error: {catalogSearchError}</small> : null}
+            {catalogSearchError ? <small style={{ color: RADIX_ERROR_TEXT }}>Catalog search/import error: {catalogSearchError}</small> : null}
             {authStatus ? <small style={{ color: theme.colors.textSecondary }}>{authStatus}</small> : null}
             </div>
 
@@ -1945,7 +1950,7 @@ export const App = () => {
                     gridTemplateColumns: "48px 1fr auto",
                     alignItems: "center",
                     gap: spacingTokens.xs,
-                    background: `linear-gradient(to right, rgba(34,197,94,0.16) ${item.progressPercent}%, ${theme.colors.surface} ${item.progressPercent}%)`
+                    background: `linear-gradient(to right, ${RADIX_ACCENT_TINT} ${item.progressPercent}%, ${theme.colors.surface} ${item.progressPercent}%)`
                   }}
                 >
                   <img src={item.coverImageUrl || DEFAULT_COVER_PLACEHOLDER} alt={`${item.title} cover`} style={{ width: 40, height: 56, objectFit: "cover", borderRadius: 6 }} />
@@ -1987,7 +1992,7 @@ export const App = () => {
               </div>
 
               {trendingStatus === "loading" ? <small style={{ color: theme.colors.textSecondary }}>Loading trending titles…</small> : null}
-              {trendingStatus === "error" ? <small style={{ color: "#b42318" }}>{trendingError ?? "Unable to load trending titles."}</small> : null}
+              {trendingStatus === "error" ? <small style={{ color: RADIX_ERROR_TEXT }}>{trendingError ?? "Unable to load trending titles."}</small> : null}
               {trendingStatus === "empty" ? <small style={{ color: theme.colors.textSecondary }}>No trending titles for this filter yet.</small> : null}
 
               {trendingItems.map((item, index) => (
@@ -2007,29 +2012,30 @@ export const App = () => {
       </div>
 
       {notificationModalOpen ? (
-        <div
+        <Box
           style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "grid", placeItems: "center", zIndex: 30, padding: spacingTokens.lg }}
           onClick={() => setNotificationModalOpen(false)}
         >
-          <div
+          {/* The notification panel uses Radix layout primitives so modal content feels consistent with themed surfaces. */}
+          <Card
             role="dialog"
             aria-modal="true"
             aria-label="Notifications"
             onClick={(event) => event.stopPropagation()}
             style={{ width: "min(520px, 90vw)", maxHeight: "70vh", overflowY: "auto", background: theme.colors.surface, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Notifications</h3>
-              <button type="button" onClick={() => setNotificationModalOpen(false)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 8, background: theme.colors.surface, color: theme.colors.textPrimary, cursor: "pointer" }}>Close</button>
-            </div>
+            <Flex justify="between" align="center">
+              <Heading as="h3" size="4" style={{ margin: 0, color: theme.colors.textPrimary }}>Notifications</Heading>
+              <Button type="button" variant="soft" onClick={() => setNotificationModalOpen(false)}>Close</Button>
+            </Flex>
             {notifications.length ? notifications.map((eventItem) => (
-              <article key={eventItem.id} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: 2 }}>
-                <strong style={{ color: theme.colors.textPrimary, fontSize: 13 }}>{eventItem.text}</strong>
-                <small style={{ color: theme.colors.textSecondary }}>{new Date(eventItem.createdAt).toLocaleString()}</small>
-              </article>
-            )) : <small style={{ color: theme.colors.textSecondary }}>No notifications yet.</small>}
-          </div>
-        </div>
+              <Card key={eventItem.id} variant="surface" style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, padding: spacingTokens.sm, display: "grid", gap: 2 }}>
+                <Text as="div" weight="bold" size="2" style={{ color: theme.colors.textPrimary }}>{eventItem.text}</Text>
+                <Text as="div" color="gray" size="1">{new Date(eventItem.createdAt).toLocaleString()}</Text>
+              </Card>
+            )) : <Text color="gray" size="2">No notifications yet.</Text>}
+          </Card>
+        </Box>
       ) : null}
 
       {catalogSearchContext ? (
@@ -2116,7 +2122,7 @@ export const App = () => {
       ) : null}
 
       {showCreateGroupSheet ? (
-        <div
+        <Box
           style={{
             position: "fixed",
             inset: 0,
@@ -2126,7 +2132,8 @@ export const App = () => {
             padding: spacingTokens.lg
           }}
         >
-          <div
+          {/* This card keeps the create-group flow aligned with the shared Radix visual language. */}
+          <Card
             style={{
               width: "min(430px, 100%)",
               background: theme.colors.surface,
@@ -2137,7 +2144,7 @@ export const App = () => {
               gap: spacingTokens.sm
             }}
           >
-            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Create group</h3>
+            <Heading as="h3" size="4" style={{ margin: 0, color: theme.colors.textPrimary }}>Create group</Heading>
             <label style={{ display: "grid", gap: 4, color: theme.colors.textSecondary, fontSize: 14 }}>
               Name
               <input
@@ -2175,40 +2182,20 @@ export const App = () => {
                 <option value="public">Public</option>
               </select>
             </label>
-            {createGroupError ? <p style={{ margin: 0, color: "#b42318" }}>{createGroupError}</p> : null}
-            <button
+            {createGroupError ? <Text as="p" size="2" style={{ margin: 0, color: RADIX_ERROR_TEXT }}>{createGroupError}</Text> : null}
+            <Button
               type="button"
               onClick={() => void handleCreateGroup()}
               disabled={isCreatingGroup}
-              style={{
-                border: "none",
-                borderRadius: radiusTokens.md,
-                padding: "10px 14px",
-                background: theme.colors.accent,
-                color: theme.colors.accentText,
-                fontWeight: 700,
-                cursor: isCreatingGroup ? "not-allowed" : "pointer",
-                opacity: isCreatingGroup ? 0.7 : 1
-              }}
+              size="3"
             >
               {isCreatingGroup ? "Creating…" : "Create group"}
-            </button>
-            <button
-              type="button"
-              onClick={closeCreateGroupModal}
-              style={{
-                borderRadius: radiusTokens.md,
-                border: `1px solid ${theme.colors.border}`,
-                padding: "10px 14px",
-                background: "transparent",
-                color: theme.colors.textPrimary,
-                cursor: "pointer"
-              }}
-            >
+            </Button>
+            <Button type="button" onClick={closeCreateGroupModal} variant="soft" color="gray" size="3">
               Cancel
-            </button>
-          </div>
-        </div>
+            </Button>
+          </Card>
+        </Box>
       ) : null}
     </div>
   );
