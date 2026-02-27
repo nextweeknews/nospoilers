@@ -1,6 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import * as Accordion from "@radix-ui/react-accordion";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { radiusTokens, spacingTokens, type AppTheme } from "@nospoilers/ui";
-import { Avatar, Box, Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
+import {
+  Avatar,
+  Box,
+  Button,
+  Card,
+  Checkbox,
+  DropdownMenu,
+  Flex,
+  Heading,
+  SegmentedControl,
+  Text,
+  TextField
+} from "@radix-ui/themes";
 import type { AuthUser } from "../../../../services/auth/src";
 
 export type TvEpisodeProgressUnit = {
@@ -50,41 +64,24 @@ const coverFallback = (title: string): string =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="96" viewBox="0 0 72 96"><rect width="72" height="96" rx="8" fill="#334155"/><text x="50%" y="50%" fill="#cbd5e1" font-size="9" dominant-baseline="middle" text-anchor="middle">${title.slice(0, 18)}</text></svg>`
   )}`;
 
-const pillButtonStyle = (theme: AppTheme, active = false) => ({
-  border: `1px solid ${active ? theme.colors.accent : theme.colors.border}`,
-  borderRadius: radiusTokens.pill,
-  padding: "8px 12px",
-  background: active ? theme.colors.accent : theme.colors.surface,
-  color: active ? theme.colors.accentText : theme.colors.textSecondary,
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-  transition: "background-color 120ms ease, border-color 120ms ease, color 120ms ease"
-});
-
-const textInputStyle = (theme: AppTheme) => ({
-  border: `1px solid ${theme.colors.border}`,
-  borderRadius: 14,
-  background: theme.colors.surface,
-  color: theme.colors.textPrimary,
-  padding: "10px 12px",
-  fontSize: 14,
-  outline: "none"
-});
-
 export const ProfileTabScreen = ({
   theme,
   user,
   onEditProfile,
   onAccountSettings,
   shelfItems,
-  onSaveShelfProgress
+  requestedEditorItemId,
+  onEditorRequestHandled,
+  onSaveShelfProgress,
+  onRemoveShelfItem
 }: {
   theme: AppTheme;
   user: AuthUser;
   onEditProfile: () => void;
   onAccountSettings: () => void;
   shelfItems: ShelfItem[];
+  requestedEditorItemId?: string | null;
+  onEditorRequestHandled?: () => void;
   onSaveShelfProgress: (params: {
     catalogItemId: string;
     status: "in_progress" | "completed";
@@ -94,29 +91,58 @@ export const ProfileTabScreen = ({
     currentEpisodeNumber?: number | null;
     watchedEpisodeCount?: number | null;
   }) => Promise<void>;
+  onRemoveShelfItem: (catalogItemId: string) => Promise<void>;
 }) => {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [bookMode, setBookMode] = useState<"page" | "percent">("page");
   const [bookProgressInput, setBookProgressInput] = useState<string>("");
   const [markBookCompleted, setMarkBookCompleted] = useState(false);
   const [selectedEpisodes, setSelectedEpisodes] = useState<Record<string, boolean>>({});
-  const [expandedSeasons, setExpandedSeasons] = useState<Record<number, boolean>>({});
+  const [expandedSeasons, setExpandedSeasons] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
 
   const editingItem = useMemo(() => shelfItems.find((item) => item.catalogItemId === editingItemId) ?? null, [editingItemId, shelfItems]);
+
+  const groupedSeasons = useMemo(() => {
+    if (!editingItem || editingItem.itemType !== "tv_show") return [];
+    const map = new Map<number, TvEpisodeProgressUnit[]>();
+    editingItem.tvProgressUnits.forEach((unit) => {
+      const existing = map.get(unit.seasonNumber) ?? [];
+      existing.push(unit);
+      map.set(unit.seasonNumber, existing);
+    });
+
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([season, episodes]) => [
+        season,
+        [...episodes].sort((a, b) => a.episodeNumber - b.episodeNumber)
+      ] as const);
+  }, [editingItem]);
+
+  // This effect lets the main feed ask the profile screen to open a specific editor.
+  // We immediately clear the request so one click only opens one editor instance.
+  useEffect(() => {
+    if (!requestedEditorItemId) return;
+    const requested = shelfItems.find((item) => item.catalogItemId === requestedEditorItemId);
+    if (!requested) {
+      onEditorRequestHandled?.();
+      return;
+    }
+    openEditor(requested);
+    onEditorRequestHandled?.();
+  }, [requestedEditorItemId, shelfItems]);
 
   const openEditor = (item: ShelfItem) => {
     setEditingItemId(item.catalogItemId);
     setFormError(null);
+
     if (item.itemType === "book") {
       const usePercent = typeof item.progressPercentValue === "number" && item.progressPercentValue > 0;
       setBookMode(usePercent ? "percent" : "page");
-      setBookProgressInput(
-        usePercent
-          ? String(Math.round(item.progressPercentValue ?? 0))
-          : String(item.currentPage ?? 0)
-      );
+      setBookProgressInput(usePercent ? String(Math.round(item.progressPercentValue ?? 0)) : String(item.currentPage ?? 0));
       setMarkBookCompleted(item.status === "completed");
       return;
     }
@@ -129,13 +155,31 @@ export const ProfileTabScreen = ({
         initialSelected[unit.id] = true;
       });
     }
+
+    // Open all seasons initially so users can immediately verify episode checkmarks without extra clicks.
+    const allSeasonIds = [...new Set(item.tvProgressUnits.map((unit) => unit.seasonNumber))]
+      .sort((a, b) => a - b)
+      .map((season) => String(season));
     setSelectedEpisodes(initialSelected);
+    setExpandedSeasons(allSeasonIds);
   };
 
   const closeEditor = () => {
     setEditingItemId(null);
     setFormError(null);
-    setExpandedSeasons({});
+    setExpandedSeasons([]);
+  };
+
+  const handleRemove = async (catalogItemId: string) => {
+    setRemovingItemId(catalogItemId);
+    try {
+      await onRemoveShelfItem(catalogItemId);
+      if (editingItemId === catalogItemId) {
+        closeEditor();
+      }
+    } finally {
+      setRemovingItemId(null);
+    }
   };
 
   const handleSave = async () => {
@@ -189,6 +233,7 @@ export const ProfileTabScreen = ({
     const progressPercent = editingItem.tvProgressUnits.length
       ? Math.round((selectedUnits.length / editingItem.tvProgressUnits.length) * 100)
       : 0;
+
     setSaving(true);
     try {
       await onSaveShelfProgress({
@@ -205,182 +250,155 @@ export const ProfileTabScreen = ({
     }
   };
 
-  const groupedSeasons = useMemo(() => {
-    if (!editingItem || editingItem.itemType !== "tv_show") return [];
-    const map = new Map<number, TvEpisodeProgressUnit[]>();
-    editingItem.tvProgressUnits.forEach((unit) => {
-      const season = unit.seasonNumber;
-      const existing = map.get(season) ?? [];
-      existing.push(unit);
-      map.set(season, existing);
-    });
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
-  }, [editingItem]);
-
   return (
     <Card style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg }}>
-      {/* Move profile header and shelf rows into Radix primitives so spacing and typography are more consistent. */}
+      {/* This section keeps profile header and shelf actions in Radix components so controls look and behave consistently. */}
       <Flex direction="column" gap="3">
-      <Avatar src={user.avatarUrl} fallback={(user.displayName ?? user.username ?? "U").slice(0, 1).toUpperCase()} size="6" radius="full" alt="avatar" />
-      <Heading as="h3" size="4" style={{ color: theme.colors.textPrimary, margin: 0 }}>@{user.username ?? "pending"}</Heading>
-      <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>{user.displayName ?? "No display name"}</Text>
-      <Flex gap="2">
-        <Button type="button" variant="soft" onClick={onEditProfile}>Edit profile</Button>
-        <Button type="button" variant="soft" onClick={onAccountSettings}>Account settings</Button>
-      </Flex>
+        <Avatar src={user.avatarUrl} fallback={(user.displayName ?? user.username ?? "U").slice(0, 1).toUpperCase()} size="6" radius="full" alt="avatar" />
+        <Heading as="h3" size="4" style={{ color: theme.colors.textPrimary, margin: 0 }}>@{user.username ?? "pending"}</Heading>
+        <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>{user.displayName ?? "No display name"}</Text>
+        <Flex gap="2">
+          <Button type="button" variant="soft" onClick={onEditProfile}>Edit profile</Button>
+          <Button type="button" variant="soft" onClick={onAccountSettings}>Account settings</Button>
+        </Flex>
 
-      <section style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm, display: "grid", gap: 8 }}>
-        <h4 style={{ margin: 0, color: theme.colors.textPrimary }}>Shelf</h4>
-        {shelfItems.length ? shelfItems.map((item) => (
-          <article
-            key={item.catalogItemId}
-            style={{
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: radiusTokens.md,
-              display: "grid",
-              gridTemplateColumns: "56px 1fr auto",
-              alignItems: "center",
-              gap: spacingTokens.sm,
-              padding: "10px",
-              background: `linear-gradient(90deg, rgba(34,197,94,0.16) ${item.progressPercent}%, ${theme.colors.surface} ${item.progressPercent}%)`
-            }}
-          >
-            <img
-              src={item.coverImageUrl || coverFallback(item.title)}
-              alt={`${item.title} cover`}
-              style={{ width: 42, height: 58, objectFit: "cover", borderRadius: 6, justifySelf: "center" }}
-            />
-            <div style={{ display: "grid", gap: 2 }}>
-              <strong style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: 600 }}>{item.title}</strong>
-              <small style={{ color: theme.colors.textSecondary, fontSize: 11 }}>
-                Updated {formatRelativeTime(item.updatedAt)} ago • {item.status === "completed" ? `Completed ${formatRelativeTime(item.completedAt || item.addedAt)} ago` : item.progressSummary}
-              </small>
-            </div>
-            <button
-              type="button"
-              aria-label={`Edit ${item.title} progress`}
-              onClick={() => openEditor(item)}
-              style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 999, width: 32, height: 32, background: theme.colors.surface }}
+        <section style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: spacingTokens.sm, display: "grid", gap: 8 }}>
+          <h4 style={{ margin: 0, color: theme.colors.textPrimary }}>Shelf</h4>
+          {shelfItems.length ? shelfItems.map((item) => (
+            <article
+              key={item.catalogItemId}
+              style={{
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: radiusTokens.md,
+                display: "grid",
+                gridTemplateColumns: "56px 1fr auto",
+                alignItems: "center",
+                gap: spacingTokens.sm,
+                padding: "10px",
+                background: `linear-gradient(90deg, rgba(34,197,94,0.16) ${item.progressPercent}%, ${theme.colors.surface} ${item.progressPercent}%)`
+              }}
             >
-              ⋯
-            </button>
-          </article>
-        )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
-      </section>
+              <img
+                src={item.coverImageUrl || coverFallback(item.title)}
+                alt={`${item.title} cover`}
+                style={{ width: 42, height: 58, objectFit: "cover", borderRadius: 6, justifySelf: "center" }}
+              />
+              <div style={{ display: "grid", gap: 2 }}>
+                <strong style={{ color: theme.colors.textPrimary, fontSize: 13, fontWeight: 600 }}>{item.title}</strong>
+                <small style={{ color: theme.colors.textSecondary, fontSize: 11 }}>
+                  Updated {formatRelativeTime(item.updatedAt)} ago • {item.status === "completed" ? `Completed ${formatRelativeTime(item.completedAt || item.addedAt)} ago` : item.progressSummary}
+                </small>
+              </div>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <Button variant="soft" size="1" aria-label={`Open ${item.title} shelf actions`} loading={removingItemId === item.catalogItemId}>⋯</Button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content>
+                  <DropdownMenu.Item onSelect={() => openEditor(item)}>Edit progress</DropdownMenu.Item>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item color="red" onSelect={() => { void handleRemove(item.catalogItemId); }}>Remove from shelf</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </article>
+          )) : <small style={{ color: theme.colors.textSecondary }}>No titles on your shelf yet.</small>}
+        </section>
 
-      {editingItem ? (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 20, padding: spacingTokens.lg }}>
-          <div style={{ width: "min(640px, 95vw)", maxHeight: "85vh", overflowY: "auto", background: `linear-gradient(180deg, ${theme.colors.surface} 0%, ${theme.colors.surfaceMuted} 100%)`, border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm, boxShadow: "0 16px 36px rgba(0,0,0,0.22)" }}>
-            <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>Update progress</h3>
-            <p style={{ margin: 0, color: theme.colors.textSecondary }}>{editingItem.title}</p>
+        {editingItem ? (
+          <Box style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 20, padding: spacingTokens.lg }}>
+            {/* This Radix card replaces the old ad-hoc modal and keeps save/cancel actions clear and stable. */}
+            <Card style={{ width: "min(640px, 95vw)", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}>
+              <Heading as="h3" size="4" style={{ margin: 0 }}>Update progress</Heading>
+              <Text size="2" color="gray">{editingItem.title}</Text>
 
-            {editingItem.itemType === "book" ? (
-              <>
-                <div style={{ display: "grid", gap: spacingTokens.xs }}>
-                  <label style={{ color: theme.colors.textSecondary, fontSize: 12 }}>Progress</label>
-                  <div style={{ display: "flex", gap: spacingTokens.xs, alignItems: "center", flexWrap: "wrap" }}>
-                    <input
+              {editingItem.itemType === "book" ? (
+                <Card variant="surface" style={{ display: "grid", gap: spacingTokens.sm }}>
+                  <Flex gap="2" align="center">
+                    <TextField.Root
                       type="text"
                       inputMode="numeric"
-                      pattern="[0-9]*"
                       value={bookProgressInput}
                       onChange={(event) => setBookProgressInput(event.target.value.replace(/\D+/g, ""))}
                       placeholder={bookMode === "percent" ? "Percent complete" : "Current page"}
-                      style={{ ...textInputStyle(theme), minWidth: 150, flex: "1 1 180px" }}
                       disabled={markBookCompleted}
+                      style={{ flex: 1 }}
                     />
-                    <div style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.pill, padding: 3, display: "inline-flex", gap: 4, background: theme.colors.surfaceMuted }}>
-                      <button
-                        type="button"
-                        onClick={() => setBookMode("page")}
-                        style={pillButtonStyle(theme, bookMode === "page")}
-                        onMouseEnter={(event) => {
-                          if (bookMode !== "page") event.currentTarget.style.background = `${theme.colors.surface}`;
-                        }}
-                        onMouseLeave={(event) => {
-                          if (bookMode !== "page") event.currentTarget.style.background = theme.colors.surfaceMuted;
-                        }}
-                      >
-                        Page
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBookMode("percent")}
-                        style={pillButtonStyle(theme, bookMode === "percent")}
-                        onMouseEnter={(event) => {
-                          if (bookMode !== "percent") event.currentTarget.style.background = `${theme.colors.surface}`;
-                        }}
-                        onMouseLeave={(event) => {
-                          if (bookMode !== "percent") event.currentTarget.style.background = theme.colors.surfaceMuted;
-                        }}
-                      >
-                        %
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <label style={{ display: "flex", gap: 8, alignItems: "center", color: theme.colors.textPrimary, fontSize: 13 }}>
-                  <input type="checkbox" checked={markBookCompleted} onChange={(event) => setMarkBookCompleted(event.target.checked)} />
-                  Mark as completed
-                </label>
-              </>
-            ) : (
-              <div style={{ display: "grid", gap: spacingTokens.xs }}>
-                {groupedSeasons.map(([season, episodes]) => {
-                  const allInSeasonChecked = episodes.every((episode) => selectedEpisodes[episode.id]);
-                  return (
-                    <div key={season} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: 14, padding: spacingTokens.sm, background: theme.colors.surfaceMuted }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedSeasons((prev) => ({ ...prev, [season]: !prev[season] }))}
-                          style={{ ...pillButtonStyle(theme, Boolean(expandedSeasons[season])), justifySelf: "start" }}
-                        >
-                          {expandedSeasons[season] ? "Hide" : "Show"} Season {season}
-                        </button>
-                        <small style={{ color: theme.colors.textSecondary }}>{episodes.length} episodes</small>
-                        <input
-                          type="checkbox"
-                          checked={allInSeasonChecked}
-                          onChange={(event) => {
-                            const next = { ...selectedEpisodes };
-                            episodes.forEach((episode) => {
-                              next[episode.id] = event.target.checked;
-                            });
-                            setSelectedEpisodes(next);
-                          }}
-                        />
-                      </div>
-                      {expandedSeasons[season] ? (
-                        <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                          {episodes.map((episode) => (
-                            <label key={episode.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center", border: `1px solid ${theme.colors.border}`, borderRadius: 10, padding: "8px 10px", background: theme.colors.surface }}>
-                              <span style={{ color: theme.colors.textPrimary, fontSize: 13 }}>Episode {episode.episodeNumber}{episode.title ? ` — ${episode.title}` : ""}</span>
-                              <input
-                                type="checkbox"
-                                checked={Boolean(selectedEpisodes[episode.id])}
-                                onChange={(event) => setSelectedEpisodes((prev) => ({ ...prev, [episode.id]: event.target.checked }))}
-                              />
-                            </label>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    <SegmentedControl.Root value={bookMode} onValueChange={(value) => setBookMode(value as "page" | "percent") }>
+                      <SegmentedControl.Item value="page">Page</SegmentedControl.Item>
+                      <SegmentedControl.Item value="percent">%</SegmentedControl.Item>
+                    </SegmentedControl.Root>
+                  </Flex>
 
-            {formError ? <small style={{ color: "#dc2626" }}>{formError}</small> : null}
+                  <Flex justify="between" align="center">
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, color: theme.colors.textPrimary }}>
+                      <Checkbox checked={markBookCompleted} onCheckedChange={(checked) => setMarkBookCompleted(Boolean(checked))} />
+                      Mark as complete
+                    </label>
+                    <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+                  </Flex>
+                </Card>
+              ) : (
+                <Card variant="surface" style={{ display: "grid", gap: spacingTokens.sm }}>
+                  {/* This accordion keeps season selection compact while still exposing episode-level checkboxes when expanded. */}
+                  <Accordion.Root type="multiple" value={expandedSeasons} onValueChange={setExpandedSeasons} style={{ display: "grid", gap: spacingTokens.xs }}>
+                    {groupedSeasons.map(([season, episodes]) => {
+                      const allInSeasonChecked = episodes.every((episode) => selectedEpisodes[episode.id]);
+                      return (
+                        <Accordion.Item key={season} value={String(season)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, overflow: "hidden" }}>
+                          <Accordion.Header>
+                            <Flex asChild align="center" justify="between" style={{ width: "100%" }}>
+                              <Accordion.Trigger style={{ background: theme.colors.surface, border: 0, padding: "10px 12px", cursor: "pointer" }}>
+                                <Flex align="center" gap="2">
+                                  <Checkbox
+                                    checked={allInSeasonChecked}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onCheckedChange={(checked) => {
+                                      const next = { ...selectedEpisodes };
+                                      episodes.forEach((episode) => {
+                                        next[episode.id] = Boolean(checked);
+                                      });
+                                      setSelectedEpisodes(next);
+                                    }}
+                                  />
+                                  <Text size="2">Season {season}</Text>
+                                </Flex>
+                                <ChevronDownIcon />
+                              </Accordion.Trigger>
+                            </Flex>
+                          </Accordion.Header>
+                          <Accordion.Content style={{ padding: "0 12px 10px", display: "grid", gap: 6, background: theme.colors.surfaceMuted }}>
+                            {episodes.map((episode) => (
+                              <label key={episode.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <Text size="1">E{episode.episodeNumber} • {episode.title ?? "Untitled"}</Text>
+                                <Checkbox
+                                  checked={Boolean(selectedEpisodes[episode.id])}
+                                  onCheckedChange={(checked) => setSelectedEpisodes((prev) => ({ ...prev, [episode.id]: Boolean(checked) }))}
+                                />
+                              </label>
+                            ))}
+                          </Accordion.Content>
+                        </Accordion.Item>
+                      );
+                    })}
+                  </Accordion.Root>
 
-            <div style={{ display: "flex", justifyContent: "end", gap: 8 }}>
-              <button type="button" onClick={closeEditor} disabled={saving} style={pillButtonStyle(theme, false)}>Cancel</button>
-              <button type="button" onClick={handleSave} disabled={saving} style={pillButtonStyle(theme, true)}>{saving ? "Saving..." : "Save"}</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-          </Flex>
+                  <Flex justify="end" gap="2">
+                    <Button type="button" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
+                    <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+                  </Flex>
+                </Card>
+              )}
+
+              {formError ? <Text size="1" style={{ color: "var(--red-9)" }}>{formError}</Text> : null}
+
+              {editingItem.itemType === "book" ? (
+                <Flex justify="end">
+                  <Button type="button" variant="soft" onClick={closeEditor} disabled={saving}>Close</Button>
+                </Flex>
+              ) : null}
+            </Card>
+          </Box>
+        ) : null}
+      </Flex>
     </Card>
   );
 };
