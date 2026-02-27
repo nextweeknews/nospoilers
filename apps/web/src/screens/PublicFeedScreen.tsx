@@ -1,4 +1,16 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
+import {
+  Avatar,
+  Box,
+  Button,
+  Card,
+  DropdownMenu,
+  Flex,
+  Heading,
+  IconButton,
+  Separator,
+  Text,
+} from "@radix-ui/themes";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -89,17 +101,16 @@ export const PublicFeedScreen = ({
   const [hoveredGroupPillKey, setHoveredGroupPillKey] = useState<string | null>(null);
   const [hoveredGroupAddPostId, setHoveredGroupAddPostId] = useState<string | null>(null);
   const [hoveredReactionPostId, setHoveredReactionPostId] = useState<string | null>(null);
-  const [menuForPostId, setMenuForPostId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!menuForPostId) {
+    if (!pickerForPostId) {
       return;
     }
 
     const onPointerDown = (event: MouseEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
-        setMenuForPostId(null);
+        setPickerForPostId(null);
       }
     };
 
@@ -107,421 +118,236 @@ export const PublicFeedScreen = ({
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
     };
-  }, [menuForPostId]);
-
-  const renderTimestamp = (createdAt: string) => (
-    <small
-      style={{
-        color: theme.colors.textSecondary,
-        flexShrink: 0,
-        fontSize: 13,
-        fontWeight: 600,
-      }}
-    >
-      {formatRelativeTimestamp(createdAt)}
-    </small>
-  );
+  }, [pickerForPostId]);
 
   return (
-    <section style={{ display: "grid", gap: spacingTokens.sm }}>
-      <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{title}</h3>
+    <Box style={{ display: "grid", gap: spacingTokens.sm }}>
+      <Heading size="4" style={{ margin: 0, color: theme.colors.textPrimary }}>
+        {title}
+      </Heading>
       {status === "loading" ? (
-        <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+        <Text size="2" style={{ color: theme.colors.textSecondary }}>
           {loadingMessage}
-        </p>
+        </Text>
       ) : null}
       {status === "error" ? (
-        <p style={{ margin: 0, color: "#d11" }}>
+        <Text size="2" color="red">
           {errorMessage ?? "Unable to load posts."}
-        </p>
+        </Text>
       ) : null}
       {status === "empty" ? (
-        <p style={{ margin: 0, color: theme.colors.textSecondary }}>
+        <Text size="2" style={{ color: theme.colors.textSecondary }}>
           {emptyMessage}
-        </p>
+        </Text>
       ) : null}
-      {posts.map((post) => (
-        <article
-          key={post.id}
-          onDoubleClick={() => {
-            onToggleReaction?.(post.id, "double_click");
-          }}
-          onMouseEnter={() => setHoveredPostId(String(post.id))}
-          onMouseLeave={() => {
-            setHoveredPostId((current) => (current === String(post.id) ? null : current));
-            setMenuForPostId((current) => (current === String(post.id) ? null : current));
-          }}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "44px minmax(0, 1fr)",
-            columnGap: spacingTokens.sm,
-            padding: spacingTokens.md,
-            borderBottom: `1px solid ${theme.colors.border}`,
-            backgroundColor:
-              hoveredPostId === String(post.id)
-                ? theme.colors.surfaceMuted ?? `${theme.colors.textPrimary}08`
-                : "transparent",
-            transition: "background-color 140ms ease",
-          }}
-        >
-          <img
-            src={post.authorAvatarUrl}
-            alt={`${post.authorDisplayName} avatar`}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              objectFit: "cover",
+      {posts.map((post) => {
+        const isPostHovered = hoveredPostId === String(post.id);
+        const isReactionHovered = hoveredReactionPostId === String(post.id);
+
+        return (
+          <Card
+            key={post.id}
+            onDoubleClick={() => {
+              onToggleReaction?.(post.id, "double_click");
             }}
-            loading="lazy"
-          />
-          <div style={{ display: "grid", gap: 4, minWidth: 0, position: "relative" }}>
-            {hoveredPostId === String(post.id) ? (
-              <div ref={menuRef} style={{ position: "absolute", top: 0, right: 0 }}>
-                <button
-                  type="button"
-                  aria-label="Post options"
-                  onClick={() => {
-                    setMenuForPostId((current) => (current === String(post.id) ? null : String(post.id)));
-                  }}
-                  style={{
-                    border: `1px solid ${theme.colors.border}`,
-                    background: theme.colors.surface,
-                    color: theme.colors.textSecondary,
-                    borderRadius: 999,
-                    width: 24,
-                    height: 24,
-                    cursor: "pointer"
-                  }}
-                >
-                  ⋯
-                </button>
-                {menuForPostId === String(post.id) ? (
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: 28,
-                      minWidth: 160,
-                      border: `1px solid ${theme.colors.border}`,
-                      borderRadius: 10,
-                      background: theme.colors.surface,
-                      boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-                      padding: 4,
-                      display: "grid",
-                      gap: 2,
-                      zIndex: 25
-                    }}
-                  >
-                    {mode === "public" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuForPostId(null);
-                          onSharePost?.(String(post.id));
-                        }}
-                        style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: theme.colors.textPrimary }}
-                      >
-                        Share post
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuForPostId(null);
-                        onReportPost?.(String(post.id));
-                      }}
-                      style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: theme.colors.textPrimary }}
-                    >
-                      Report post
-                    </button>
-                    {post.canDelete ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuForPostId(null);
-                          onDeletePost?.(String(post.id));
-                        }}
-                        style={{ textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", color: "#dc2626" }}
-                      >
-                        Delete post
-                      </button>
-                    ) : null}
-                  </div>
+            onMouseEnter={() => setHoveredPostId(String(post.id))}
+            onMouseLeave={() => {
+              setHoveredPostId((current) => (current === String(post.id) ? null : current));
+            }}
+            style={{
+              borderRadius: 12,
+              border: `1px solid ${theme.colors.border}`,
+              backgroundColor: isPostHovered
+                ? theme.colors.surfaceMuted ?? `${theme.colors.textPrimary}08`
+                : theme.colors.surface,
+              boxShadow: "none",
+              transition: "background-color 140ms ease",
+            }}
+          >
+            {/* This layout keeps avatar and post body aligned while switching to Radix layout primitives. */}
+            <Flex gap="3" align="start">
+              <Avatar
+                src={post.authorAvatarUrl}
+                fallback={post.authorDisplayName.slice(0, 1).toUpperCase()}
+                size="3"
+                radius="full"
+                alt={`${post.authorDisplayName} avatar`}
+              />
+              <Box style={{ display: "grid", gap: 6, width: "100%", minWidth: 0, position: "relative" }}>
+                {isPostHovered ? (
+                  <Box style={{ position: "absolute", top: 0, right: 0 }}>
+                    <DropdownMenu.Root>
+                      <DropdownMenu.Trigger>
+                        <IconButton
+                          variant="soft"
+                          radius="full"
+                          size="1"
+                          aria-label="Post options"
+                          style={{ color: theme.colors.textSecondary }}
+                        >
+                          ⋯
+                        </IconButton>
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Content>
+                        {mode === "public" ? (
+                          <DropdownMenu.Item onSelect={() => onSharePost?.(String(post.id))}>
+                            Share post
+                          </DropdownMenu.Item>
+                        ) : null}
+                        <DropdownMenu.Item onSelect={() => onReportPost?.(String(post.id))}>
+                          Report post
+                        </DropdownMenu.Item>
+                        {post.canDelete ? (
+                          <DropdownMenu.Item color="red" onSelect={() => onDeletePost?.(String(post.id))}>
+                            Delete post
+                          </DropdownMenu.Item>
+                        ) : null}
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Root>
+                  </Box>
                 ) : null}
-              </div>
-            ) : null}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                flexWrap: "nowrap",
-                minWidth: 0,
-              }}
-            >
-              <strong
-                style={{
-                  color: theme.colors.textPrimary,
-                  fontWeight: 600,
-                  fontSize: 13,
-                  flexShrink: 0,
-                }}
-              >
-                {post.authorDisplayName}
-              </strong>
-              {showCatalogContext && post.catalogItemTitle ? (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    minWidth: 0,
-                    flex: 1,
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      display: "inline-block",
-                      width: 6,
-                      height: 6,
-                      backgroundColor: theme.colors.textSecondary,
-                      maskImage: "url('/graphics/rightarrow.svg')",
-                      maskRepeat: "no-repeat",
-                      maskPosition: "center",
-                      maskSize: "contain",
-                      WebkitMaskImage: "url('/graphics/rightarrow.svg')",
-                      WebkitMaskRepeat: "no-repeat",
-                      WebkitMaskPosition: "center",
-                      WebkitMaskSize: "contain",
-                    }}
-                  />
-                  <span
-                    style={{
-                      color: theme.colors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      minWidth: 0,
-                      display: "inline-flex",
-                      alignItems: "baseline",
-                      gap: 4,
-                    }}
-                  >
-                    <span
-                      style={{
-                        minWidth: 0,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {post.catalogItemTitle}
-                    </span>
-                    <span
-                      style={{
-                        color: theme.colors.textSecondary,
-                        flexShrink: 0,
-                      }}
-                      aria-hidden="true"
-                    >
-                      ·
-                    </span>
-                    {renderTimestamp(post.created_at)}
-                  </span>
-                </span>
-              ) : null}
-              {!showCatalogContext || !post.catalogItemTitle ? (
-                <>
-                  <span
-                    style={{ color: theme.colors.textSecondary, flexShrink: 0 }}
-                    aria-hidden="true"
-                  >
-                    ·
-                  </span>
-                  {renderTimestamp(post.created_at)}
-                </>
-              ) : null}
-            </div>
-            {post.progressLine ? (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  color: theme.colors.textSecondary,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  minWidth: 0,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    display: "inline-block",
-                    width: 12,
-                    height: 12,
-                    backgroundColor: theme.colors.textSecondary,
-                    maskImage: "url('/graphics/downrightconnectorarrow.svg')",
-                    maskRepeat: "no-repeat",
-                    maskPosition: "center",
-                    maskSize: "contain",
-                    WebkitMaskImage:
-                      "url('/graphics/downrightconnectorarrow.svg')",
-                    WebkitMaskRepeat: "no-repeat",
-                    WebkitMaskPosition: "center",
-                    WebkitMaskSize: "contain",
-                  }}
-                />
-                {post.progressLine}
-              </span>
-            ) : null}
-            <p
-              style={{
-                margin: 0,
-                color: post.isSpoilerHidden ? theme.colors.textSecondary : theme.colors.textPrimary,
-                whiteSpace: "pre-wrap",
-                fontSize: 13,
-                fontWeight: post.isSpoilerHidden ? 500 : 400,
-              }}
-            >
-              {post.previewText ?? "(No text)"}
-            </p>
-            {mode === "group" ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                {(post.groupReactionPills ?? []).map((pill) => {
-                  const pillKey = `${post.id}-${pill.emoji}`;
-                  const isHovered = hoveredGroupPillKey === pillKey;
-                  const borderColor =
-                    pill.viewerHasReacted || isHovered
-                      ? theme.colors.accent
-                      : theme.colors.border;
-                  return (
-                    <button
-                      key={pillKey}
-                      type="button"
-                      onClick={() =>
-                        onToggleGroupEmojiReaction?.(String(post.id), pill.emoji)
-                      }
-                      onMouseEnter={() => setHoveredGroupPillKey(pillKey)}
-                      onMouseLeave={() =>
-                        setHoveredGroupPillKey((current) =>
-                          current === pillKey ? null : current
-                        )
-                      }
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        minHeight: 24,
-                        gap: 6,
-                        borderRadius: 999,
-                        border: `1px solid ${borderColor}`,
-                        padding: "2px 10px",
-                        background: pill.viewerHasReacted
-                          ? `${theme.colors.accent}15`
-                          : "transparent",
-                        color: theme.colors.textPrimary,
-                        fontSize: 12,
-                        cursor: "pointer"
-                      }}
-                    >
-                      <span aria-hidden="true">{pill.emoji}</span>
-                      <span>{pill.count}</span>
-                    </button>
-                  );
-                })}
 
-                <button
-                  type="button"
-                  onClick={() => setPickerForPostId((cur) => (cur === String(post.id) ? null : String(post.id)))}
-                  onMouseEnter={() => setHoveredGroupAddPostId(String(post.id))}
-                  onMouseLeave={() => setHoveredGroupAddPostId((current) => (current === String(post.id) ? null : current))}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minHeight: 24,
-                    borderRadius: 999,
-                    border: `1px solid ${hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.border}`,
-                    padding: "2px 10px",
-                    background: "transparent",
-                    color: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.textSecondary,
-                    fontSize: 12,
-                    cursor: "pointer"
-                  }}
-                  aria-label="Add reaction"
-                >
-                  +
-                </button>
+                <Flex align="center" gap="2" style={{ flexWrap: "nowrap", minWidth: 0 }}>
+                  <Text weight="bold" size="2" style={{ color: theme.colors.textPrimary, flexShrink: 0 }}>
+                    {post.authorDisplayName}
+                  </Text>
+                  {showCatalogContext && post.catalogItemTitle ? (
+                    <Flex align="center" gap="2" style={{ minWidth: 0, flex: 1 }}>
+                      <Text size="1" style={{ color: theme.colors.textSecondary }} aria-hidden="true">
+                        →
+                      </Text>
+                      <Text size="2" weight="bold" style={{ color: theme.colors.textPrimary, minWidth: 0 }}>
+                        <Box
+                          as="span"
+                          style={{
+                            minWidth: 0,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {post.catalogItemTitle}
+                        </Box>
+                      </Text>
+                    </Flex>
+                  ) : null}
+                  <Text size="1" style={{ color: theme.colors.textSecondary, flexShrink: 0 }}>
+                    · {formatRelativeTimestamp(post.created_at)}
+                  </Text>
+                </Flex>
 
-                {pickerForPostId === String(post.id) ? (
-                  <div style={{ position: "relative" }}>
-                    <div style={{ position: "absolute", zIndex: 50, top: 6 }}>
-                      <EmojiPicker
-                        onEmojiClick={(emojiData: EmojiClickData) => {
-                          const chosen = String(emojiData.emoji ?? "");
-                          setPickerForPostId(null);
-                          if (chosen) onToggleGroupEmojiReaction?.(String(post.id), chosen);
-                        }}
-                      />
-                    </div>
-                  </div>
+                {post.progressLine ? (
+                  <Text size="1" style={{ color: theme.colors.textSecondary }}>
+                    ↳ {post.progressLine}
+                  </Text>
                 ) : null}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  onToggleReaction?.(post.id, "pill_click");
-                }}
-                aria-label={post.viewerHasReacted ? "Remove heart reaction" : "Add heart reaction"}
-                onMouseEnter={() => setHoveredReactionPostId(String(post.id))}
-                onMouseLeave={() => setHoveredReactionPostId((current) => (current === String(post.id) ? null : current))}
-                style={{
-                  justifySelf: "start",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  minHeight: 24,
-                  gap: 6,
-                  borderRadius: 999,
-                  border: `1px solid ${post.viewerHasReacted || hoveredReactionPostId === String(post.id) ? theme.colors.accent : theme.colors.border}`,
-                  padding: "2px 10px",
-                  backgroundColor: "transparent",
-                  color: theme.colors.textSecondary,
-                  fontSize: 12,
-                  lineHeight: 1.3,
-                  cursor: "pointer"
-                }}
-              >
-                <span
-                  aria-hidden="true"
+
+                <Text
+                  size="2"
                   style={{
-                    display: "inline-block",
-                    width: 12,
-                    height: 12,
-                    backgroundColor:
-                      post.viewerHasReacted || hoveredReactionPostId === String(post.id)
-                        ? theme.colors.accent
-                        : theme.colors.textSecondary,
-                    maskImage: `url('${post.viewerHasReacted ? "/graphics/react.svg" : "/graphics/noreact.svg"}')`,
-                    maskRepeat: "no-repeat",
-                    maskPosition: "center",
-                    maskSize: "contain",
-                    WebkitMaskImage: `url('${post.viewerHasReacted ? "/graphics/react.svg" : "/graphics/noreact.svg"}')`,
-                    WebkitMaskRepeat: "no-repeat",
-                    WebkitMaskPosition: "center",
-                    WebkitMaskSize: "contain",
+                    color: post.isSpoilerHidden ? theme.colors.textSecondary : theme.colors.textPrimary,
+                    whiteSpace: "pre-wrap",
+                    fontWeight: post.isSpoilerHidden ? 500 : 400,
                   }}
-                />
-                <span>{post.reactionCount}</span>
-              </button>
-            )}
-          </div>
-        </article>
-      ))}
-    </section>
+                >
+                  {post.previewText ?? "(No text)"}
+                </Text>
+
+                {mode === "group" ? (
+                  <Flex wrap="wrap" gap="2" mt="2" align="center">
+                    {(post.groupReactionPills ?? []).map((pill) => {
+                      const pillKey = `${post.id}-${pill.emoji}`;
+                      const isHovered = hoveredGroupPillKey === pillKey;
+                      const borderColor =
+                        pill.viewerHasReacted || isHovered
+                          ? theme.colors.accent
+                          : theme.colors.border;
+
+                      return (
+                        <Button
+                          key={pillKey}
+                          type="button"
+                          size="1"
+                          variant="outline"
+                          radius="full"
+                          onClick={() => onToggleGroupEmojiReaction?.(String(post.id), pill.emoji)}
+                          onMouseEnter={() => setHoveredGroupPillKey(pillKey)}
+                          onMouseLeave={() =>
+                            setHoveredGroupPillKey((current) =>
+                              current === pillKey ? null : current,
+                            )
+                          }
+                          style={{
+                            borderColor,
+                            color: theme.colors.textPrimary,
+                            background: pill.viewerHasReacted
+                              ? `${theme.colors.accent}15`
+                              : "transparent",
+                          }}
+                        >
+                          {pill.emoji} {pill.count}
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      type="button"
+                      size="1"
+                      variant="outline"
+                      radius="full"
+                      onClick={() => setPickerForPostId((cur) => (cur === String(post.id) ? null : String(post.id)))}
+                      onMouseEnter={() => setHoveredGroupAddPostId(String(post.id))}
+                      onMouseLeave={() => setHoveredGroupAddPostId((current) => (current === String(post.id) ? null : current))}
+                      style={{
+                        borderColor: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.border,
+                        color: hoveredGroupAddPostId === String(post.id) ? theme.colors.accent : theme.colors.textSecondary,
+                      }}
+                      aria-label="Add reaction"
+                    >
+                      +
+                    </Button>
+
+                    {pickerForPostId === String(post.id) ? (
+                      <Box ref={menuRef} style={{ position: "relative" }}>
+                        <Box style={{ position: "absolute", zIndex: 50, top: 6 }}>
+                          <EmojiPicker
+                            onEmojiClick={(emojiData: EmojiClickData) => {
+                              const chosen = String(emojiData.emoji ?? "");
+                              setPickerForPostId(null);
+                              if (chosen) onToggleGroupEmojiReaction?.(String(post.id), chosen);
+                            }}
+                          />
+                        </Box>
+                      </Box>
+                    ) : null}
+                  </Flex>
+                ) : (
+                  <Button
+                    type="button"
+                    size="1"
+                    variant="outline"
+                    radius="full"
+                    onClick={() => {
+                      onToggleReaction?.(post.id, "pill_click");
+                    }}
+                    aria-label={post.viewerHasReacted ? "Remove heart reaction" : "Add heart reaction"}
+                    onMouseEnter={() => setHoveredReactionPostId(String(post.id))}
+                    onMouseLeave={() => setHoveredReactionPostId((current) => (current === String(post.id) ? null : current))}
+                    style={{
+                      justifySelf: "start",
+                      borderColor: post.viewerHasReacted || isReactionHovered ? theme.colors.accent : theme.colors.border,
+                      color: theme.colors.textSecondary,
+                    }}
+                  >
+                    {post.viewerHasReacted ? "❤" : "♡"} {post.reactionCount}
+                  </Button>
+                )}
+                <Separator size="4" style={{ marginTop: 2 }} />
+              </Box>
+            </Flex>
+          </Card>
+        );
+      })}
+    </Box>
   );
 };
