@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Theme } from "@radix-ui/themes";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import "@radix-ui/themes/styles.css";
 import { typographyTokens } from "@nospoilers/ui";
 import { App } from "./App";
@@ -21,21 +22,27 @@ if (!document.getElementById(typographyStyleTagId)) {
       margin: 0;
       min-height: 100%;
       font-family: var(--ns-font-family-base);
-      background: #ffffff;
+      /* Use Radix background tokens so the page surface follows light/dark mode automatically. */
+      background: var(--color-background);
+      color: var(--gray-12);
     }
   `;
   document.head.appendChild(typographyStyleTag);
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  // This Theme setup keeps the existing cool-blue look while using Radix color scales and typography.
-  <Theme
-    accentColor="blue"
-    grayColor="slate"
-    radius="medium"
-    scaling="100%"
-    panelBackground="solid"
-  >
-    <App />
-  </Theme>
+  // next-themes applies either a `light` or `dark` class to the document root based on user/system preference.
+  // Radix Theme then inherits that class so its color scales and semantic tokens switch modes in sync.
+  <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
+    <Theme
+      appearance="inherit"
+      accentColor="blue"
+      grayColor="slate"
+      radius="medium"
+      scaling="100%"
+      panelBackground="solid"
+    >
+      <App />
+    </Theme>
+  </NextThemesProvider>
 );
