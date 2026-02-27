@@ -1050,7 +1050,7 @@ export const App = () => {
       const postIdStr = String(postId);
       if (!currentUser) return;
     
-      const hadReacted = reactedPostIds.has(postId);
+      const hadReacted = reactedPostIds.has(postIdStr);
     
       // Double click is "react only"
       if (source === "double_click" && hadReacted) return;
@@ -1066,53 +1066,57 @@ export const App = () => {
       const nextReacted = new Set(prevReacted);
       const nextCounts = new Map(prevCounts);
     
-      const prevCount = nextCounts.get(postId) ?? 0;
+      const prevCount = nextCounts.get(postIdStr) ?? 0;
     
       // Only change count if state actually changes
       const delta = willReact === hadReacted ? 0 : willReact ? 1 : -1;
     
-      if (willReact) nextReacted.add(postId);
-      else nextReacted.delete(postId);
+      if (willReact) nextReacted.add(postIdStr);
+      else nextReacted.delete(postIdStr);
     
-      nextCounts.set(postId, Math.max(0, prevCount + delta));
+      nextCounts.set(postIdStr, Math.max(0, prevCount + delta));
     
       setReactedPostIds(nextReacted);
       setReactionCountsByPostId(nextCounts);
     
       // Update both feeds (public + group) so whichever is visible updates instantly
       const patchPost = (p: PostEntity) =>
-        String(p.id) === postId
-          ? { ...p, viewerHasReacted: willReact, reactionCount: Math.max(0, (p.reactionCount ?? prevCount) + delta) }
+        String(p.id) === postIdStr
+          ? {
+              ...p,
+              viewerHasReacted: willReact,
+              reactionCount: Math.max(0, (p.reactionCount ?? prevCount) + delta)
+            }
           : p;
     
       setPosts((prev) => prev.map(patchPost));
       setGroupPosts((prev) => prev.map(patchPost));
     
       // ---- Request coalescing (prevents spam) ----
-      desiredReactionStateRef.current.set(postId, willReact);
+      desiredReactionStateRef.current.set(postIdStr, willReact);
     
       // If a request is already running for this post, stop here.
       // The in-flight loop will read the newest desired state when it finishes.
-      if (reactionInFlightRef.current.has(postId)) return;
+      if (reactionInFlightRef.current.has(postIdStr)) return;
     
-      reactionInFlightRef.current.add(postId);
+      reactionInFlightRef.current.add(postIdStr);
     
       try {
         while (true) {
-          const desired = desiredReactionStateRef.current.get(postId);
+          const desired = desiredReactionStateRef.current.get(postIdStr);
           if (typeof desired !== "boolean") break;
     
           const request = desired
             ? supabaseClient
                 .from("post_reactions")
                 .upsert(
-                  { post_id: Number(postId), user_id: currentUser.id, emoji: "react" },
+                  { post_id: Number(postIdStr), user_id: currentUser.id, emoji: "react" },
                   { onConflict: "post_id,user_id" }
                 )
             : supabaseClient
                 .from("post_reactions")
                 .delete()
-                .eq("post_id", Number(postId))
+                .eq("post_id", Number(postIdStr))
                 .eq("user_id", currentUser.id);
     
           const { error } = await request;
@@ -1125,26 +1129,26 @@ export const App = () => {
             setReactionCountsByPostId(prevCounts);
     
             const rollbackPost = (p: PostEntity) =>
-              String(p.id) === postId
+              String(p.id) === postIdStr
                 ? {
                     ...p,
-                    viewerHasReacted: prevReacted.has(postId),
-                    reactionCount: prevCounts.get(postId) ?? 0
+                    viewerHasReacted: prevReacted.has(postIdStr),
+                    reactionCount: prevCounts.get(postIdStr) ?? 0
                   }
                 : p;
     
             setPosts((prev) => prev.map(rollbackPost));
             setGroupPosts((prev) => prev.map(rollbackPost));
     
-            desiredReactionStateRef.current.delete(postId);
+            desiredReactionStateRef.current.delete(postIdStr);
             break;
           }
     
           // If desired state hasn't changed since request started, we're done.
-          if (desiredReactionStateRef.current.get(postId) === desired) break;
+          if (desiredReactionStateRef.current.get(postIdStr) === desired) break;
         }
       } finally {
-        reactionInFlightRef.current.delete(postId);
+        reactionInFlightRef.current.delete(postIdStr);
       }
     };
   
