@@ -7,7 +7,6 @@ import {
   DropdownMenu,
   Flex,
   Heading,
-  IconButton,
   Separator,
   Text,
 } from "@radix-ui/themes";
@@ -177,16 +176,32 @@ export const PublicFeedScreen = ({
                 {isPostHovered ? (
                   <Box style={{ position: "absolute", top: 0, right: 0 }}>
                     <DropdownMenu.Root>
-                      <DropdownMenu.Trigger>
-                        <IconButton
-                          variant="soft"
-                          radius="full"
-                          size="1"
+                      {/* We intentionally use a plain icon-only trigger so the old circular button chrome is fully removed. */}
+                      <DropdownMenu.Trigger asChild>
+                        <button
+                          type="button"
                           aria-label="Post options"
-                          style={{ color: theme.colors.textSecondary }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 0,
+                            border: "none",
+                            background: "transparent",
+                            color: theme.colors.success,
+                            cursor: "pointer",
+                          }}
                         >
-                          ⋯
-                        </IconButton>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 15 15"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path d="M8.625 2.5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Zm0 5a1.125 1.125 0 1 1-2.25 0 1.125 1.125 0 0 1 2.25 0Z" />
+                          </svg>
+                        </button>
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Content>
                         {mode === "public" ? (
@@ -198,9 +213,13 @@ export const PublicFeedScreen = ({
                           Report post
                         </DropdownMenu.Item>
                         {post.canDelete ? (
-                          <DropdownMenu.Item color="red" onSelect={() => onDeletePost?.(String(post.id))}>
-                            Delete post
-                          </DropdownMenu.Item>
+                          <>
+                            {/* Keep destructive actions visually separated so users can scan the menu safely. */}
+                            <DropdownMenu.Separator />
+                            <DropdownMenu.Item color="red" onSelect={() => onDeletePost?.(String(post.id))}>
+                              Delete post
+                            </DropdownMenu.Item>
+                          </>
                         ) : null}
                       </DropdownMenu.Content>
                     </DropdownMenu.Root>
