@@ -730,7 +730,6 @@ export const App = () => {
           .from("post_reactions")
           .select("post_id")
           .eq("user_id", currentUser.id)
-          .eq("emoji", "heart"),
         supabaseClient
           .from("post_reaction_counts")
           .select("post_id,reaction_count")
@@ -1088,7 +1087,7 @@ export const App = () => {
       ? supabaseClient
           .from("post_reactions")
           .upsert(
-            { post_id: Number(postId), user_id: currentUser.id, emoji: "heart" },
+            { post_id: Number(postId), user_id: currentUser.id, emoji: "react" },
             { onConflict: "post_id,user_id", ignoreDuplicates: false }
           )
           .select("post_id")
