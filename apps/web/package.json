@@ -13,6 +13,7 @@
     "@nospoilers/auth": "0.1.0",
     "@nospoilers/types": "0.1.0",
     "@nospoilers/ui": "0.1.0",
+    "@radix-ui/react-icons": "^1.3.2",
     "@radix-ui/themes": "^3.3.0",
     "@supabase/supabase-js": "^2.57.4",
     "emoji-picker-react": "^4.18.0",
