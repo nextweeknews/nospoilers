@@ -1,6 +1,5 @@
 import { spacingTokens, type AppTheme } from "@nospoilers/ui";
-import Picker from "@emoji-mart/react";
-import data from "@emoji-mart/data";
+import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { useState } from "react";
 
 type GroupReactionPill = {
@@ -325,10 +324,9 @@ export const PublicFeedScreen = ({
                 {pickerForPostId === String(post.id) ? (
                   <div style={{ position: "relative" }}>
                     <div style={{ position: "absolute", zIndex: 50, top: 6 }}>
-                      <Picker
-                        data={data}
-                        onEmojiSelect={(e: { native?: string }) => {
-                          const chosen = String(e.native ?? "");
+                      <EmojiPicker
+                        onEmojiClick={(emojiData: EmojiClickData) => {
+                          const chosen = String(emojiData.emoji ?? "");
                           setPickerForPostId(null);
                           if (chosen) onToggleGroupEmojiReaction?.(String(post.id), chosen);
                         }}
