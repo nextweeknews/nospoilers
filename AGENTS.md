@@ -14,6 +14,7 @@ Releases: https://www.radix-ui.com/themes/docs/overview/releases
 When you need to understand a component's API, intended behavior, or usage patterns, consult the docs at the URLs above rather than guessing.
 
 # Here is the Supabase SQL schema for this project:
+```
 CREATE TABLE public.catalog_item_aliases (
   catalog_item_id bigint NOT NULL,
   alias text NOT NULL,
@@ -272,8 +273,9 @@ CREATE TABLE public.users (
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
-
+```
 # And here are all Supabase SQL policies:
+```
 [
   {
     "schema_name": "public",
@@ -924,3 +926,4 @@ CREATE TABLE public.users (
     "with_check_expression": "((auth.uid() = id) AND (is_premium = ( SELECT u.is_premium\n   FROM users u\n  WHERE (u.id = users.id))) AND (is_site_admin = ( SELECT u.is_site_admin\n   FROM users u\n  WHERE (u.id = users.id))) AND (is_banned = ( SELECT u.is_banned\n   FROM users u\n  WHERE (u.id = users.id))) AND (infraction_count = ( SELECT u.infraction_count\n   FROM users u\n  WHERE (u.id = users.id))))"
   }
 ]
+```
