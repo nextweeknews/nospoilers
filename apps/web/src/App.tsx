@@ -344,8 +344,9 @@ export const App = () => {
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
-  const [hoveredGroupMenuId, setHoveredGroupMenuId] = useState<string | null>(null);
-  const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
+  const [groupRoleById, setGroupRoleById] = useState<Record<string, "owner" | "admin" | "member">>({});
+  const [hoveredSidebarGroupMenuId, setHoveredSidebarGroupMenuId] = useState<string | null>(null);
+  const [openSidebarGroupMenuId, setOpenSidebarGroupMenuId] = useState<string | null>(null);
   const [hoveredGroupCatalogMenuId, setHoveredGroupCatalogMenuId] = useState<string | null>(null);
   const [openGroupCatalogMenuId, setOpenGroupCatalogMenuId] = useState<string | null>(null);
   const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("all_time");
@@ -572,6 +573,9 @@ export const App = () => {
       setFeedError(undefined);
       setShelfItems([]);
       setGroupCatalogItems([]);
+      setGroupRoleById({});
+      setOpenSidebarGroupMenuId(null);
+      setHoveredSidebarGroupMenuId(null);
       setSelectedShelfCatalogItemId(null);
       setSelectedGroupCatalogItemId(null);
       return;
@@ -589,7 +593,7 @@ export const App = () => {
 
       const groupResult = await supabaseClient
         .from("group_memberships")
-        .select("groups(id,name,description,avatar_path)")
+        .select("role,groups(id,name,description,avatar_path)")
         .eq("user_id", currentUser.id)
         .eq("status", "active")
         .order("joined_at", { ascending: false });
@@ -604,11 +608,32 @@ export const App = () => {
         setGroupStatus("error");
         setGroupError(groupResult.error.message);
         setGroupPosts([]);
+        setGroupRoleById({});
+        setOpenSidebarGroupMenuId(null);
+        setHoveredSidebarGroupMenuId(null);
       } else {
-        const memberships = (groupResult.data as Array<{ groups: GroupEntity | GroupEntity[] | null }> | null) ?? [];
+        const memberships = (
+          groupResult.data as Array<{
+            role: "owner" | "admin" | "member";
+            groups: GroupEntity | GroupEntity[] | null;
+          }> | null
+        ) ?? [];
         const loadedGroups = memberships.flatMap((membership) =>
           Array.isArray(membership.groups) ? membership.groups : membership.groups ? [membership.groups] : []
         );
+        // We keep role lookup by group id so group-level menus can hide or show admin-only actions without extra queries.
+        const nextGroupRoleById: Record<string, "owner" | "admin" | "member"> = {};
+        memberships.forEach((membership) => {
+          const membershipGroups = Array.isArray(membership.groups)
+            ? membership.groups
+            : membership.groups
+              ? [membership.groups]
+              : [];
+          membershipGroups.forEach((group) => {
+            nextGroupRoleById[String(group.id)] = membership.role;
+          });
+        });
+        setGroupRoleById(nextGroupRoleById);
         setGroups(loadedGroups);
         setGroupStatus(loadedGroups.length ? "ready" : "empty");
         setSelectedGroupId((current) => (current && !loadedGroups.some((group) => group.id === current) ? null : current));
@@ -1308,6 +1333,18 @@ export const App = () => {
     console.info("[app] report post placeholder", { postId });
   };
 
+  const onShareGroup = (groupId: string) => {
+    console.info("[app] share group placeholder", { groupId });
+  };
+
+  const onReportGroup = (groupId: string) => {
+    console.info("[app] report group placeholder", { groupId });
+  };
+
+  const onLeaveGroup = (groupId: string) => {
+    console.info("[app] leave group placeholder", { groupId });
+  };
+
   const onDeletePost = async (postId: string) => {
     if (!currentUser) return;
 
@@ -1625,6 +1662,8 @@ export const App = () => {
     }
 
     setGroups((prev) => [insertedGroup as GroupEntity, ...prev]);
+    // The creator becomes owner immediately, so we can unlock owner-only menu behavior without waiting for a reload.
+    setGroupRoleById((prev) => ({ ...prev, [String(insertedGroup.id)]: "owner" }));
     setGroupStatus("ready");
     closeCreateGroupModal();
   };
@@ -1828,10 +1867,11 @@ export const App = () => {
             <strong style={{ color: theme.colors.textSecondary, marginTop: spacingTokens.sm, padding: "8px 18px" }}>Your groups</strong>
             {groups.map((group) => {
               const active = mainView === "groups" && selectedGroupId === String(group.id);
-              const groupMenuId = String(group.id);
-              const isGroupMenuOpen = openGroupMenuId === groupMenuId;
-              const isGroupMenuHovered = hoveredGroupMenuId === groupMenuId;
-
+              const groupMenuKey = String(group.id);
+              const isSidebarGroupMenuOpen = openSidebarGroupMenuId === groupMenuKey;
+              const isSidebarGroupMenuHovered = hoveredSidebarGroupMenuId === groupMenuKey;
+              const isGroupRowHovered = hoveredSidebarItemKey === `group-${group.id}`;
+              const roleForGroup = groupRoleById[groupMenuKey];
               return (
                 <div
                   key={group.id}
@@ -1852,39 +1892,29 @@ export const App = () => {
                     />
                   </button>
                   <DropdownMenu.Root
-                    open={isGroupMenuOpen}
-                    onOpenChange={(nextOpen) => setOpenGroupMenuId(nextOpen ? groupMenuId : null)}
+                    open={isSidebarGroupMenuOpen}
+                    onOpenChange={(nextOpen) => setOpenSidebarGroupMenuId(nextOpen ? groupMenuKey : null)}
                   >
-                    {/* The menu trigger appears while a row is hovered and stays accent-colored while open so state is clear. */}
+                    {/* This keeps group-level actions available directly in the sidebar row while still preserving a clean list when rows are idle. */}
                     <DropdownMenu.Trigger
                       aria-label={`Open ${group.name} options`}
-                      onMouseEnter={() => setHoveredGroupMenuId(groupMenuId)}
-                      onMouseLeave={() => {
-                        setHoveredGroupMenuId((current) =>
-                          current === groupMenuId ? null : current,
-                        );
-                      }}
+                      onMouseEnter={() => setHoveredSidebarGroupMenuId(groupMenuKey)}
+                      onMouseLeave={() => setHoveredSidebarGroupMenuId((current) => current === groupMenuKey ? null : current)}
                       style={{
                         ...sidebarIconButtonReset,
                         ...sidebarActionTriggerContainerStyle,
-                        opacity:
-                          hoveredSidebarItemKey === `group-${group.id}` ||
-                          isGroupMenuHovered ||
-                          isGroupMenuOpen
-                            ? 1
-                            : 0,
-                        color:
-                          isGroupMenuHovered || isGroupMenuOpen
-                            ? theme.colors.accent
-                            : theme.colors.textSecondary,
+                        opacity: isGroupRowHovered || isSidebarGroupMenuHovered || isSidebarGroupMenuOpen ? 1 : 0,
+                        color: isSidebarGroupMenuHovered || isSidebarGroupMenuOpen ? theme.colors.accent : theme.colors.textSecondary,
                       }}
                     >
                       <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content align="end">
-                      <DropdownMenu.Item style={{ color: "#fff" }}>Share group</DropdownMenu.Item>
-                      <DropdownMenu.Item color="red">Leave group</DropdownMenu.Item>
-                      <DropdownMenu.Item color="red">Report group</DropdownMenu.Item>
+                      <DropdownMenu.Item onSelect={() => onShareGroup(groupMenuKey)}>Share group</DropdownMenu.Item>
+                      {roleForGroup !== "owner" && roleForGroup !== "admin" ? (
+                        <DropdownMenu.Item color="red" onSelect={() => onReportGroup(groupMenuKey)}>Report group</DropdownMenu.Item>
+                      ) : null}
+                      <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(groupMenuKey)}>Leave group</DropdownMenu.Item>
                     </DropdownMenu.Content>
                   </DropdownMenu.Root>
                 </div>
@@ -2100,8 +2130,30 @@ export const App = () => {
             {mainView === "groups" ? (
               selectedGroup ? (
                 <>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacingTokens.sm, marginBottom: spacingTokens.md }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: spacingTokens.xs, marginBottom: spacingTokens.md }}>
                     <h3 style={{ margin: 0, color: theme.colors.textPrimary }}>{selectedGroup.name}</h3>
+                    <DropdownMenu.Root>
+                      {/* The group header menu keeps group-level actions next to the group name, where users expect feed-level controls. */}
+                      <DropdownMenu.Trigger
+                        aria-label={`Open ${selectedGroup.name} options`}
+                        style={{
+                          ...sidebarIconButtonReset,
+                          width: 24,
+                          height: 24,
+                          borderRadius: 999,
+                          color: theme.colors.textSecondary,
+                        }}
+                      >
+                        <DotsHorizontalIcon width={16} height={16} aria-hidden="true" />
+                      </DropdownMenu.Trigger>
+                      <DropdownMenu.Content align="start">
+                        <DropdownMenu.Item onSelect={() => onShareGroup(String(selectedGroup.id))}>Share group</DropdownMenu.Item>
+                        {groupRoleById[String(selectedGroup.id)] !== "owner" && groupRoleById[String(selectedGroup.id)] !== "admin" ? (
+                          <DropdownMenu.Item color="red" onSelect={() => onReportGroup(String(selectedGroup.id))}>Report group</DropdownMenu.Item>
+                        ) : null}
+                        <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(String(selectedGroup.id))}>Leave group</DropdownMenu.Item>
+                      </DropdownMenu.Content>
+                    </DropdownMenu.Root>
                   </div>
                   <PublicFeedScreen
                     theme={theme}
@@ -2115,6 +2167,7 @@ export const App = () => {
                     mode="group"
                     onToggleGroupEmojiReaction={onToggleGroupEmojiReaction}
                     onDeletePost={onDeletePost}
+                    onSharePost={onSharePost}
                     onReportPost={onReportPost}
                   />
                 </>
