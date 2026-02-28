@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { DotsHorizontalIcon } from "@radix-ui/react-icons";
+import { DotsHorizontalIcon, PlusIcon } from "@radix-ui/react-icons";
 import { AlertDialog, Box, Button, Card, DropdownMenu, Flex, Heading, Text } from "@radix-ui/themes";
 import type { AuthUser, ProviderLoginResult } from "../../../services/auth/src";
 import {
@@ -68,6 +68,7 @@ type GroupCatalogItem = {
   groupId: string;
   catalogItemId: string;
   title: string;
+  itemType: "book" | "tv_show";
   coverImageUrl?: string;
 };
 
@@ -345,6 +346,8 @@ export const App = () => {
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
   const [hoveredGroupMenuId, setHoveredGroupMenuId] = useState<string | null>(null);
   const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
+  const [hoveredGroupCatalogMenuId, setHoveredGroupCatalogMenuId] = useState<string | null>(null);
+  const [openGroupCatalogMenuId, setOpenGroupCatalogMenuId] = useState<string | null>(null);
   const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("all_time");
   const [trendingTypeFilter, setTrendingTypeFilter] = useState<TrendingTypeFilter>("all");
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
@@ -805,7 +808,7 @@ export const App = () => {
       if (activeGroupIds.length) {
         const groupCatalogResult = await supabaseClient
           .from("group_catalog_items")
-          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title,cover_image_url)")
+          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title,item_type,cover_image_url)")
           .in("group_id", activeGroupIds)
           .eq("is_active", true)
           .order("added_at", { ascending: false });
@@ -815,10 +818,11 @@ export const App = () => {
           setGroupCatalogItems([]);
         } else {
           setGroupCatalogItems(
-            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null; cover_image_url?: string | null } | null }> | null) ?? [])).map((row) => ({
+            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null; item_type?: "book" | "tv_show" | null; cover_image_url?: string | null } | null }> | null) ?? [])).map((row) => ({
               groupId: String(row.group_id),
               catalogItemId: String(row.catalog_item_id),
               title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+              itemType: row.catalog_items?.item_type === "tv_show" ? "tv_show" : "book",
               coverImageUrl: row.catalog_items?.cover_image_url ?? undefined
             }))
           );
@@ -1104,10 +1108,31 @@ export const App = () => {
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
   const shelfPreviewItems = useMemo(() => shelfItems.slice(0, 6), [shelfItems]);
 
-  const selectedGroupCatalogItems = selectedGroupId
-    ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
-    : [];
   const shelfItemsByCatalogId = useMemo(() => new Map(shelfItems.map((item) => [item.catalogItemId, item])), [shelfItems]);
+  const selectedGroupCatalogItems = useMemo(() => {
+    if (!selectedGroupId) {
+      return [] as Array<GroupCatalogItem & { isOnShelf: boolean; shelfItem?: ShelfItem }>;
+    }
+
+    // This keeps group titles that are also on the viewer's shelf at the top, while still preserving
+    // recency ordering within each section so familiar items remain easy to locate.
+    return groupCatalogItems
+      .filter((item) => item.groupId === selectedGroupId)
+      .map((item) => {
+        const shelfItem = shelfItemsByCatalogId.get(item.catalogItemId);
+        return {
+          ...item,
+          isOnShelf: Boolean(shelfItem),
+          shelfItem
+        };
+      })
+      .sort((left, right) => {
+        if (left.isOnShelf === right.isOnShelf) {
+          return 0;
+        }
+        return left.isOnShelf ? -1 : 1;
+      });
+  }, [groupCatalogItems, selectedGroupId, shelfItemsByCatalogId]);
   const applyViewerPostVisibility = (candidatePosts: PostEntity[]): PostEntity[] =>
     candidatePosts.reduce<PostEntity[]>((acc, post) => {
       const catalogItemId = String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "");
@@ -1155,6 +1180,52 @@ export const App = () => {
     setMainView("profile");
     setShowProfileSettings(false);
     setRequestedShelfEditorItemId(catalogItemId);
+  };
+
+  const addCatalogItemToShelf = async (item: Pick<GroupCatalogItem, "catalogItemId" | "title" | "itemType" | "coverImageUrl">) => {
+    if (!currentUser) return;
+
+    const catalogItemId = Number(item.catalogItemId);
+    if (!Number.isFinite(catalogItemId)) return;
+
+    const { error } = await supabaseClient.from("user_media_progress").upsert(
+      {
+        user_id: currentUser.id,
+        catalog_item_id: catalogItemId,
+        status: "in_progress",
+        current_sequence_index: 0,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "user_id,catalog_item_id" }
+    );
+
+    if (error) {
+      setAuthStatus(`Unable to add to shelf: ${error.message}`);
+      return;
+    }
+
+    // New shelf rows are inserted at the top so the just-added title is immediately visible in shelf-based flows.
+    setShelfItems((prev) => {
+      const next = prev.filter((entry) => entry.catalogItemId !== item.catalogItemId);
+      return [{
+        catalogItemId: item.catalogItemId,
+        title: item.title,
+        itemType: item.itemType,
+        coverImageUrl: item.coverImageUrl,
+        status: "in_progress",
+        addedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+        progressSummary: item.itemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+        progressPercent: 0,
+        currentPage: null,
+        pageCount: null,
+        currentSeasonNumber: null,
+        currentEpisodeNumber: null,
+        progressPercentValue: null,
+        tvProgressUnits: []
+      }, ...next];
+    });
   };
 
   const onSaveShelfProgress = async ({
@@ -1865,18 +1936,103 @@ export const App = () => {
                 >
                   <SidebarItemContent label="Home" iconText={HOME_ICON} theme={theme} />
                 </button>
-                {selectedGroupCatalogItems.map((item) => (
-                  <button
-                    key={`${item.groupId}-${item.catalogItemId}`}
-                    type="button"
-                    onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
-                    onMouseEnter={() => setHoveredSidebarItemKey(`group-catalog-${item.groupId}-${item.catalogItemId}`)}
-                    onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-catalog-${item.groupId}-${item.catalogItemId}` ? null : current)}
-                    style={listItemStyle(theme, selectedGroupCatalogItemId === item.catalogItemId, hoveredSidebarItemKey === `group-catalog-${item.groupId}-${item.catalogItemId}`)}
-                  >
-                    <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
-                  </button>
-                ))}
+                {selectedGroupCatalogItems.map((item) => {
+                  const rowKey = `${item.groupId}-${item.catalogItemId}`;
+                  const rowHoverKey = `group-catalog-${rowKey}`;
+                  const rowMenuKey = `group-catalog-menu-${rowKey}`;
+                  const isRowHovered = hoveredSidebarItemKey === rowHoverKey;
+                  const isRowMenuHovered = hoveredGroupCatalogMenuId === rowMenuKey;
+                  const isRowMenuOpen = openGroupCatalogMenuId === rowMenuKey;
+
+                  return (
+                    <div
+                      key={rowKey}
+                      onMouseEnter={() => setHoveredSidebarItemKey(rowHoverKey)}
+                      onMouseLeave={() => setHoveredSidebarItemKey((current) => current === rowHoverKey ? null : current)}
+                      style={listItemStyle(
+                        theme,
+                        selectedGroupCatalogItemId === item.catalogItemId,
+                        isRowHovered,
+                        item.isOnShelf ? `${RADIX_ACCENT_TINT}` : "var(--gray-a3)"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
+                        style={{ ...sidebarRowButtonReset, color: "inherit" }}
+                      >
+                        <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
+                      </button>
+                      {item.isOnShelf && item.shelfItem ? (
+                        <DropdownMenu.Root
+                          open={isRowMenuOpen}
+                          onOpenChange={(nextOpen) => setOpenGroupCatalogMenuId(nextOpen ? rowMenuKey : null)}
+                        >
+                          {/* Shelf-owned group titles mirror the primary group menu affordance so actions feel familiar. */}
+                          <DropdownMenu.Trigger
+                            aria-label={`Open ${item.title} shelf actions`}
+                            onMouseEnter={() => setHoveredGroupCatalogMenuId(rowMenuKey)}
+                            onMouseLeave={() => {
+                              setHoveredGroupCatalogMenuId((current) => current === rowMenuKey ? null : current);
+                            }}
+                            style={{
+                              ...sidebarIconButtonReset,
+                              opacity: isRowHovered || isRowMenuHovered || isRowMenuOpen ? 1 : 0,
+                              color: isRowMenuHovered || isRowMenuOpen ? theme.colors.accent : theme.colors.textSecondary
+                            }}
+                          >
+                            <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end">
+                            <DropdownMenu.Item onSelect={() => requestShelfEditor(item.catalogItemId)}>Edit progress</DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              color="red"
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                // This routes through the same confirm dialog used elsewhere so accidental removals need explicit approval.
+                                setPendingSidebarShelfRemoval(item.shelfItem ?? null);
+                                setOpenGroupCatalogMenuId(null);
+                                setHoveredGroupCatalogMenuId(null);
+                              }}
+                            >
+                              Remove from shelf
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      ) : (
+                        <DropdownMenu.Root
+                          open={isRowMenuOpen}
+                          onOpenChange={(nextOpen) => setOpenGroupCatalogMenuId(nextOpen ? rowMenuKey : null)}
+                        >
+                          {/* Titles not yet on the shelf keep an always-visible add affordance so users can act without hunting for a hover menu. */}
+                          <DropdownMenu.Trigger
+                            aria-label={`Add ${item.title} to shelf`}
+                            onMouseEnter={() => setHoveredGroupCatalogMenuId(rowMenuKey)}
+                            onMouseLeave={() => {
+                              setHoveredGroupCatalogMenuId((current) => current === rowMenuKey ? null : current);
+                            }}
+                            style={{
+                              ...sidebarIconButtonReset,
+                              width: 28,
+                              height: 28,
+                              borderRadius: 999,
+                              marginRight: 10,
+                              border: `1px solid ${isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "var(--gray-a6)"}`,
+                              background: isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "transparent",
+                              color: isRowMenuHovered || isRowMenuOpen ? "white" : "var(--accent-9)",
+                              transition: "background-color 120ms ease, border-color 120ms ease, color 120ms ease"
+                            }}
+                          >
+                            <PlusIcon width={14} height={14} aria-hidden="true" />
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end">
+                            <DropdownMenu.Item onSelect={() => void addCatalogItemToShelf(item)}>Add to shelf</DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      )}
+                    </div>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => {
@@ -2251,7 +2407,13 @@ export const App = () => {
 
             setGroupCatalogItems((prev) => {
               const next = prev.filter((entry) => !(entry.groupId === String(groupId) && entry.catalogItemId === String(catalogItemId)));
-              return [{ groupId: String(groupId), catalogItemId: String(catalogItemId), title: imported.catalog_item.title }, ...next];
+              return [{
+                groupId: String(groupId),
+                catalogItemId: String(catalogItemId),
+                title: imported.catalog_item.title,
+                itemType: imported.catalog_item.item_type === "tv_show" ? "tv_show" : "book",
+                coverImageUrl: imported.catalog_item.cover_image_url ?? undefined
+              }, ...next];
             });
           }}
           onError={(message) => {
@@ -2465,7 +2627,12 @@ const SidebarItemContent = ({
   );
 };
 
-const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, hovered = false): CSSProperties => ({
+const listItemStyle = (
+  theme: ReturnType<typeof createTheme>,
+  active: boolean,
+  hovered = false,
+  neutralTint = "transparent"
+): CSSProperties => ({
   ...menuItem(theme),
   padding: "16px 18px",
   fontSize: 16,
@@ -2475,7 +2642,7 @@ const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, h
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : "transparent",
+  background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : neutralTint,
   color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
   transition: "background-color 120ms ease, color 120ms ease"
 });
