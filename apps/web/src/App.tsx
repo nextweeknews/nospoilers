@@ -2551,7 +2551,7 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
 
 // Row buttons inside list rows claim remaining horizontal space so the right-side menu control sits inside the same row without overflow.
 const sidebarRowButtonReset: CSSProperties = {
-  flex: 1,
+  width: "100%",
   minWidth: 0,
   border: "none",
   background: "transparent",
@@ -2569,18 +2569,20 @@ const sidebarIconButtonReset: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  marginLeft: spacingTokens.sm,
-  marginRight: 6,
   padding: 0,
   flexShrink: 0,
   cursor: "pointer",
   transition: "color 120ms ease, opacity 120ms ease"
 };
 
-// Sidebar row actions use shared spacing so controls remain inside the column and labels can wrap cleanly when space is tight.
+// Sidebar row actions reserve a fixed slot at the right edge of each list item so icons stay fully visible instead of hugging/clipping on the column border.
 const sidebarActionTriggerContainerStyle: CSSProperties = {
-  marginLeft: spacingTokens.sm,
-  marginRight: 6,
+  width: 32,
+  minWidth: 32,
+  paddingRight: 4,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   flexShrink: 0
 };
 
@@ -2648,14 +2650,15 @@ const listItemStyle = (
   neutralTint = "transparent"
 ): CSSProperties => ({
   ...menuItem(theme),
-  padding: "16px 18px",
+  padding: "16px 12px 16px 18px",
   fontSize: 16,
   fontWeight: 500,
   borderRadius: 0,
   minHeight: 64,
-  display: "flex",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  columnGap: spacingTokens.sm,
   alignItems: "center",
-  justifyContent: "space-between",
   background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : neutralTint,
   color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
   transition: "background-color 120ms ease, color 120ms ease"
