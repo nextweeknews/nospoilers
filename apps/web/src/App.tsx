@@ -24,6 +24,7 @@ import { LoginScreen } from "./screens/LoginScreen";
 import { OnboardingProfileScreen } from "./screens/OnboardingProfileScreen";
 import { ProfileSettingsScreen } from "./screens/ProfileSettingsScreen";
 import { PublicFeedScreen } from "./screens/PublicFeedScreen";
+import { GroupSettingsScreen } from "./screens/GroupSettingsScreen";
 import { ProfileTabScreen, type ShelfItem } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
 import {
@@ -39,6 +40,7 @@ const THEME_KEY = "nospoilers:web:theme-preference";
 const MAIN_VIEW_KEY = "nospoilers:web:last-main-view";
 
 type MainView = "groups" | "for-you" | "profile";
+type GroupContentView = "feed" | "settings";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 type GroupEntity = SupabaseGroupRow;
@@ -70,6 +72,15 @@ type GroupCatalogItem = {
   title: string;
   itemType: "book" | "tv_show";
   coverImageUrl?: string;
+};
+
+type GroupMember = {
+  groupId: string;
+  userId: string;
+  displayName: string;
+  username?: string | null;
+  avatarUrl?: string;
+  role: "owner" | "admin" | "member";
 };
 
 type TrendingTimeframe = "all_time";
@@ -343,6 +354,9 @@ export const App = () => {
   const [groupCatalogItems, setGroupCatalogItems] = useState<GroupCatalogItem[]>([]);
   const [selectedShelfCatalogItemId, setSelectedShelfCatalogItemId] = useState<string | null>(null);
   const [selectedGroupCatalogItemId, setSelectedGroupCatalogItemId] = useState<string | null>(null);
+  const [groupContentView, setGroupContentView] = useState<GroupContentView>("feed");
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [pendingGroupDangerAction, setPendingGroupDangerAction] = useState<{ groupId: string; type: "leave" | "delete" } | null>(null);
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
   const [groupRoleById, setGroupRoleById] = useState<Record<string, "owner" | "admin" | "member">>({});
   const [hoveredSidebarGroupMenuId, setHoveredSidebarGroupMenuId] = useState<string | null>(null);
@@ -578,6 +592,9 @@ export const App = () => {
       setHoveredSidebarGroupMenuId(null);
       setSelectedShelfCatalogItemId(null);
       setSelectedGroupCatalogItemId(null);
+      setGroupContentView("feed");
+      setGroupMembers([]);
+      setPendingGroupDangerAction(null);
       return;
     }
 
@@ -593,7 +610,7 @@ export const App = () => {
 
       const groupResult = await supabaseClient
         .from("group_memberships")
-        .select("role,groups(id,name,description,avatar_path)")
+        .select("role,groups(id,name,description,avatar_path,created_by)")
         .eq("user_id", currentUser.id)
         .eq("status", "active")
         .order("joined_at", { ascending: false });
@@ -1130,7 +1147,59 @@ export const App = () => {
     setSelectedGroupCatalogItemId(null);
   }, [mainView, selectedGroupId]);
 
+  useEffect(() => {
+    if (!currentUser || !selectedGroupId) {
+      setGroupMembers([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadGroupMembers = async () => {
+      const { data, error } = await supabaseClient
+        .from("group_memberships")
+        .select("group_id,user_id,role,users!group_memberships_user_id_fkey(display_name,username,avatar_path)")
+        .eq("group_id", Number(selectedGroupId))
+        .eq("status", "active");
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("[app] group members load failed", error);
+        setGroupMembers([]);
+        return;
+      }
+
+      const rows = (data as Array<{
+        group_id: string | number;
+        user_id: string;
+        role: "owner" | "admin" | "member";
+        users?: { display_name?: string | null; username?: string | null; avatar_path?: string | null } | null;
+      }> | null) ?? [];
+
+      // This mapping keeps the settings table resilient even when some profile fields are missing.
+      setGroupMembers(rows.map((row) => ({
+        groupId: String(row.group_id),
+        userId: row.user_id,
+        role: row.role,
+        displayName: row.users?.display_name?.trim() || row.users?.username?.trim() || "Unknown",
+        username: row.users?.username ?? null,
+        avatarUrl: mapAvatarPathToUiValue(row.users?.avatar_path)
+      })));
+    };
+
+    void loadGroupMembers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, selectedGroupId]);
+
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
+  const selectedGroupIsOwner = Boolean(currentUser && selectedGroup && String(selectedGroup.created_by) === currentUser.id);
+  const selectedGroupMembers = selectedGroupId
+    ? groupMembers.filter((member) => member.groupId === selectedGroupId)
+    : [];
   const shelfPreviewItems = useMemo(() => shelfItems.slice(0, 6), [shelfItems]);
 
   const shelfItemsByCatalogId = useMemo(() => new Map(shelfItems.map((item) => [item.catalogItemId, item])), [shelfItems]);
@@ -1342,7 +1411,71 @@ export const App = () => {
   };
 
   const onLeaveGroup = (groupId: string) => {
-    console.info("[app] leave group placeholder", { groupId });
+    setPendingGroupDangerAction({ groupId, type: "leave" });
+  };
+
+  const onDeleteGroup = (groupId: string) => {
+    setPendingGroupDangerAction({ groupId, type: "delete" });
+  };
+
+  const onConfirmGroupDangerAction = async () => {
+    if (!currentUser || !pendingGroupDangerAction) return;
+
+    const targetGroupId = Number(pendingGroupDangerAction.groupId);
+    if (!Number.isFinite(targetGroupId)) return;
+
+    if (pendingGroupDangerAction.type === "leave") {
+      // Leaving only removes the current user's membership row for this group.
+      const { error } = await supabaseClient
+        .from("group_memberships")
+        .delete()
+        .eq("group_id", targetGroupId)
+        .eq("user_id", currentUser.id);
+
+      if (error) {
+        setAuthStatus(`Unable to leave group: ${error.message}`);
+        return;
+      }
+
+      setGroups((prev) => prev.filter((group) => Number(group.id) !== targetGroupId));
+      setGroupMembers((prev) => prev.filter((member) => Number(member.groupId) !== targetGroupId || member.userId !== currentUser.id));
+      setGroupPosts((prev) => prev.filter((post) => Number(post.group_id ?? -1) !== targetGroupId));
+      setGroupRoleById((prev) => {
+        const next = { ...prev };
+        delete next[String(targetGroupId)];
+        return next;
+      });
+    } else {
+      // Deleting a group is a soft-delete so records remain auditable while disappearing from every feed.
+      const { error } = await supabaseClient
+        .from("groups")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", targetGroupId)
+        .eq("created_by", currentUser.id);
+
+      if (error) {
+        setAuthStatus(`Unable to delete group: ${error.message}`);
+        return;
+      }
+
+      setGroups((prev) => prev.filter((group) => Number(group.id) !== targetGroupId));
+      setGroupMembers((prev) => prev.filter((member) => Number(member.groupId) !== targetGroupId));
+      setGroupPosts((prev) => prev.filter((post) => Number(post.group_id ?? -1) !== targetGroupId));
+      setGroupRoleById((prev) => {
+        const next = { ...prev };
+        delete next[String(targetGroupId)];
+        return next;
+      });
+    }
+
+    if (selectedGroupId === String(targetGroupId)) {
+      setSelectedGroupId(null);
+      setSelectedGroupCatalogItemId(null);
+      setGroupContentView("feed");
+      setMainView("for-you");
+    }
+
+    setPendingGroupDangerAction(null);
   };
 
   const onDeletePost = async (postId: string) => {
@@ -1625,7 +1758,7 @@ export const App = () => {
         privacy: createGroupPrivacy,
         created_by: currentUser.id
       })
-      .select("id,name,description,avatar_path")
+      .select("id,name,description,avatar_path,created_by")
       .single();
 
     if (groupInsertError || !insertedGroup) {
@@ -1667,6 +1800,10 @@ export const App = () => {
     setGroupStatus("ready");
     closeCreateGroupModal();
   };
+
+  const pendingDangerGroup = pendingGroupDangerAction
+    ? groups.find((group) => String(group.id) === pendingGroupDangerAction.groupId)
+    : undefined;
 
   if (pathname === "/auth/callback") {
     return (
@@ -1881,7 +2018,7 @@ export const App = () => {
                 >
                   <button
                     type="button"
-                    onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
+                    onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setGroupContentView("feed"); setShowProfileSettings(false); }}
                     style={{ ...sidebarRowButtonReset, color: "inherit" }}
                   >
                     <SidebarItemContent
@@ -1911,10 +2048,13 @@ export const App = () => {
                     </DropdownMenu.Trigger>
                     <DropdownMenu.Content align="end">
                       <DropdownMenu.Item onSelect={() => onShareGroup(groupMenuKey)}>Share group</DropdownMenu.Item>
+                      <DropdownMenu.Item onSelect={() => { setMainView("groups"); setSelectedGroupId(groupMenuKey); setGroupContentView("settings"); setSelectedGroupCatalogItemId(null); }}>Group settings</DropdownMenu.Item>
                       {roleForGroup !== "owner" && roleForGroup !== "admin" ? (
                         <DropdownMenu.Item color="red" onSelect={() => onReportGroup(groupMenuKey)}>Report group</DropdownMenu.Item>
                       ) : null}
-                      <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(groupMenuKey)}>Leave group</DropdownMenu.Item>
+                      {!currentUser || String(group.created_by) !== currentUser.id ? (
+                        <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(groupMenuKey)}>Leave group</DropdownMenu.Item>
+                      ) : null}
                     </DropdownMenu.Content>
                   </DropdownMenu.Root>
                 </div>
@@ -1960,7 +2100,7 @@ export const App = () => {
               <>
                 <button
                   type="button"
-                  onClick={() => setSelectedGroupCatalogItemId(null)}
+                  onClick={() => { setSelectedGroupCatalogItemId(null); setGroupContentView("feed"); }}
                   onMouseEnter={() => setHoveredSidebarItemKey("group-home")}
                   onMouseLeave={() => setHoveredSidebarItemKey((current) => current === "group-home" ? null : current)}
                   style={listItemStyle(theme, selectedGroupCatalogItemId == null, hoveredSidebarItemKey === "group-home")}
@@ -1989,7 +2129,7 @@ export const App = () => {
                     >
                       <button
                         type="button"
-                        onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
+                        onClick={() => { setSelectedGroupCatalogItemId(item.catalogItemId); setGroupContentView("feed"); }}
                         style={{ ...sidebarRowButtonReset, color: "inherit" }}
                       >
                         <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
@@ -2148,28 +2288,50 @@ export const App = () => {
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Content align="start">
                         <DropdownMenu.Item onSelect={() => onShareGroup(String(selectedGroup.id))}>Share group</DropdownMenu.Item>
+                        <DropdownMenu.Item onSelect={() => setGroupContentView("settings")}>Group settings</DropdownMenu.Item>
                         {groupRoleById[String(selectedGroup.id)] !== "owner" && groupRoleById[String(selectedGroup.id)] !== "admin" ? (
                           <DropdownMenu.Item color="red" onSelect={() => onReportGroup(String(selectedGroup.id))}>Report group</DropdownMenu.Item>
                         ) : null}
-                        <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(String(selectedGroup.id))}>Leave group</DropdownMenu.Item>
+                        {!currentUser || String(selectedGroup.created_by) !== currentUser.id ? (
+                          <DropdownMenu.Item color="red" onSelect={() => onLeaveGroup(String(selectedGroup.id))}>Leave group</DropdownMenu.Item>
+                        ) : null}
                       </DropdownMenu.Content>
                     </DropdownMenu.Root>
                   </div>
-                  <PublicFeedScreen
-                    theme={theme}
-                    status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
-                    errorMessage={groupError}
-                    posts={selectedGroupPosts}
-                    title={`${selectedGroup.name} Feed`}
-                    loadingMessage="Loading group posts…"
-                    emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
-                    showCatalogContext={!selectedGroupCatalogItemId}
-                    mode="group"
-                    onToggleGroupEmojiReaction={onToggleGroupEmojiReaction}
-                    onDeletePost={onDeletePost}
-                    onSharePost={onSharePost}
-                    onReportPost={onReportPost}
-                  />
+                  {groupContentView === "settings" ? (
+                    <GroupSettingsScreen
+                      theme={theme}
+                      groupName={selectedGroup.name}
+                      currentUserId={currentUser?.id ?? ""}
+                      groupMembers={selectedGroupMembers}
+                      isOwner={selectedGroupIsOwner}
+                      onViewProfile={(userId) => console.info("[app] view profile placeholder", { userId })}
+                      onReportUser={(userId) => console.info("[app] report user placeholder", { userId })}
+                      onConfirmDangerAction={() => {
+                        if (selectedGroupIsOwner) {
+                          onDeleteGroup(String(selectedGroup.id));
+                        } else {
+                          onLeaveGroup(String(selectedGroup.id));
+                        }
+                      }}
+                    />
+                  ) : (
+                    <PublicFeedScreen
+                      theme={theme}
+                      status={groupStatus === "ready" ? (selectedGroupPosts.length ? "ready" : "empty") : groupStatus}
+                      errorMessage={groupError}
+                      posts={selectedGroupPosts}
+                      title={`${selectedGroup.name} Feed`}
+                      loadingMessage="Loading group posts…"
+                      emptyMessage={selectedGroupCatalogItemId ? "No posts for this title yet." : "No posts in this group yet."}
+                      showCatalogContext={!selectedGroupCatalogItemId}
+                      mode="group"
+                      onToggleGroupEmojiReaction={onToggleGroupEmojiReaction}
+                      onDeletePost={onDeletePost}
+                      onSharePost={onSharePost}
+                      onReportPost={onReportPost}
+                    />
+                  )}
                 </>
               ) : (
                 <p style={{ margin: 0, color: theme.colors.textSecondary }}>Select a group from the left column.</p>
@@ -2481,6 +2643,33 @@ export const App = () => {
           importEndpoint={`${FUNCTIONS_URL}/catalog-import`}
         />
       ) : null}
+
+      <AlertDialog.Root
+        open={pendingGroupDangerAction != null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setPendingGroupDangerAction(null);
+          }
+        }}
+      >
+        <AlertDialog.Content maxWidth="360px">
+          <AlertDialog.Title>
+            {pendingGroupDangerAction?.type === "delete"
+              ? `Delete ${pendingDangerGroup?.name ?? "group"}?`
+              : `Leave ${pendingDangerGroup?.name ?? "group"}?`}
+          </AlertDialog.Title>
+          <Flex gap="3" mt="4" justify="end">
+            <AlertDialog.Cancel>
+              <Button variant="soft" color="gray">Cancel</Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action>
+              <Button color="red" onClick={() => { void onConfirmGroupDangerAction(); }}>
+                {pendingGroupDangerAction?.type === "delete" ? "Delete" : "Leave"}
+              </Button>
+            </AlertDialog.Action>
+          </Flex>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
 
       <AlertDialog.Root
         open={pendingSidebarShelfRemoval != null}

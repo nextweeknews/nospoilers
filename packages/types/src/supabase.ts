@@ -12,6 +12,7 @@ export type SupabaseGroupRow = {
   name: string;
   description: string | null;
   avatar_path: string | null;
+  created_by: string;
 };
 
 export type SupabasePostRow = {
