@@ -206,10 +206,27 @@ export const PublicFeedScreen = ({
                       >
                         <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
                         </DropdownMenu.Trigger>
-                      <DropdownMenu.Content>
-                        <DropdownMenu.Item style={{ color: "#fff" }}>Share group</DropdownMenu.Item>
-                        <DropdownMenu.Item color="red">Leave group</DropdownMenu.Item>
-                        <DropdownMenu.Item color="red">Report group</DropdownMenu.Item>
+                      <DropdownMenu.Content align="end">
+                        {/* Share is always present so every post exposes the same primary action affordance. */}
+                        <DropdownMenu.Item onSelect={() => onSharePost?.(String(post.id))}>Share post</DropdownMenu.Item>
+                        {/* Authors should not be able to report themselves, so this row is hidden on self-authored posts. */}
+                        {!post.canDelete ? (
+                          <DropdownMenu.Item color="red" onSelect={() => onReportPost?.(String(post.id))}>Report post</DropdownMenu.Item>
+                        ) : null}
+                        {/* Deleting is a destructive action, so we route through confirmation before any write is attempted. */}
+                        {post.canDelete ? (
+                          <DropdownMenu.Item
+                            color="red"
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              setPendingDeletePostId(String(post.id));
+                              setOpenMenuPostId(null);
+                              setHoveredMenuTriggerPostId(null);
+                            }}
+                          >
+                            Delete post
+                          </DropdownMenu.Item>
+                        ) : null}
                       </DropdownMenu.Content>
                     </DropdownMenu.Root>
                   </Box>
