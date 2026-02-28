@@ -1182,11 +1182,19 @@ export const App = () => {
     setRequestedShelfEditorItemId(catalogItemId);
   };
 
-  const addCatalogItemToShelf = async (item: Pick<GroupCatalogItem, "catalogItemId" | "title" | "itemType" | "coverImageUrl">) => {
+  // This shared helper keeps shelf inserts identical whether someone adds from group menus or catalog search.
+  const addCatalogItemToShelf = async (item: {
+    catalogItemId: string;
+    title: string;
+    itemType?: "book" | "tv_show";
+    coverImageUrl?: string;
+  }) => {
     if (!currentUser) return;
 
     const catalogItemId = Number(item.catalogItemId);
     if (!Number.isFinite(catalogItemId)) return;
+
+    const normalizedItemType = item.itemType ?? "book";
 
     const { error } = await supabaseClient.from("user_media_progress").upsert(
       {
@@ -1201,6 +1209,7 @@ export const App = () => {
 
     if (error) {
       setAuthStatus(`Unable to add to shelf: ${error.message}`);
+      setCatalogSearchError(error.message);
       return;
     }
 
@@ -1210,13 +1219,13 @@ export const App = () => {
       return [{
         catalogItemId: item.catalogItemId,
         title: item.title,
-        itemType: item.itemType,
+        itemType: normalizedItemType,
         coverImageUrl: item.coverImageUrl,
         status: "in_progress",
         addedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         completedAt: null,
-        progressSummary: item.itemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+        progressSummary: normalizedItemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
         progressPercent: 0,
         currentPage: null,
         pageCount: null,
@@ -1298,59 +1307,6 @@ export const App = () => {
       console.error("[app] failed to remove shelf item", error);
       setShelfItems(previous);
     }
-  };
-
-  // This shared helper is used by search and sidebar menus so any "add to shelf" action creates the same shelf state.
-  const addCatalogItemToShelf = async ({
-    catalogItemId,
-    title,
-    itemType,
-    coverImageUrl
-  }: {
-    catalogItemId: string;
-    title: string;
-    itemType?: "book" | "tv_show";
-    coverImageUrl?: string;
-  }) => {
-    if (!currentUser) return;
-
-    const { error } = await supabaseClient.from("user_media_progress").upsert(
-      {
-        user_id: currentUser.id,
-        catalog_item_id: Number(catalogItemId),
-        status: "in_progress",
-        current_sequence_index: 0,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: "user_id,catalog_item_id" }
-    );
-
-    if (error) {
-      setCatalogSearchError(error.message);
-      return;
-    }
-
-    setShelfItems((prev) => {
-      const next = prev.filter((entry) => entry.catalogItemId !== String(catalogItemId));
-      return [{
-        catalogItemId: String(catalogItemId),
-        title,
-        itemType: itemType ?? "book",
-        coverImageUrl,
-        status: "in_progress",
-        addedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        completedAt: null,
-        progressSummary: (itemType ?? "book") === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
-        progressPercent: 0,
-        currentPage: null,
-        pageCount: null,
-        currentSeasonNumber: null,
-        currentEpisodeNumber: null,
-        progressPercentValue: null,
-        tvProgressUnits: []
-      }, ...next];
-    });
   };
 
   const onSharePost = (postId: string) => {
