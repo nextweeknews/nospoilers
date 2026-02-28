@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Dialog,
   DropdownMenu,
   Flex,
   Heading,
@@ -315,9 +316,13 @@ export const ProfileTabScreen = ({
         </section>
 
         {editingItem ? (
-          <Box style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "grid", placeItems: "center", zIndex: 20, padding: spacingTokens.lg }}>
-            {/* This card intentionally uses only Radix primitives so the editor stays visually consistent and predictable. */}
-            <Card style={{ width: "min(640px, 95vw)", maxHeight: "85vh", overflowY: "auto", border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.lg, padding: spacingTokens.lg, display: "grid", gap: spacingTokens.sm }}>
+          <Dialog.Root open={editingItem != null} onOpenChange={(open) => {
+            if (!open) {
+              closeEditor();
+            }
+          }}>
+            {/* This content keeps the progress editor fully in Radix primitives so only the design-system modal chrome is shown. */}
+            <Dialog.Content style={{ width: "min(640px, 95vw)", maxHeight: "85vh", overflowY: "auto", display: "grid", gap: spacingTokens.sm }}>
               {/* This header keeps artwork and title together so users can confirm they are editing the intended title. */}
               <Flex align="center" gap="3">
                 <Avatar
@@ -334,7 +339,7 @@ export const ProfileTabScreen = ({
               <Separator size="4" />
 
               {editingItem.itemType === "book" ? (
-                <Card variant="surface" style={{ display: "grid", gap: spacingTokens.sm }}>
+                <Flex direction="column" gap="3">
                   <Flex gap="2" align="center">
                     <TextField.Root
                       type="text"
@@ -363,18 +368,18 @@ export const ProfileTabScreen = ({
                     <Button type="button" color="gray" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
                     <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
                   </Flex>
-                </Card>
+                </Flex>
               ) : (
-                <Card variant="surface" style={{ display: "grid", gap: spacingTokens.sm }}>
+                <Flex direction="column" gap="3">
                   {/* This accordion keeps season selection compact while still exposing episode-level checkboxes when expanded. */}
                   <Accordion.Root type="multiple" value={expandedSeasons} onValueChange={setExpandedSeasons} style={{ display: "grid", gap: spacingTokens.xs }}>
                     {groupedSeasons.map(([season, episodes]) => {
                       const allInSeasonChecked = episodes.every((episode) => selectedEpisodes[episode.id]);
                       return (
-                        <Accordion.Item key={season} value={String(season)} style={{ border: `1px solid ${theme.colors.border}`, borderRadius: radiusTokens.md, overflow: "hidden" }}>
+                        <Accordion.Item key={season} value={String(season)}>
                           <Accordion.Header>
                             <Flex asChild align="center" justify="between" style={{ width: "100%" }}>
-                              <Accordion.Trigger style={{ background: theme.colors.surface, border: 0, padding: "10px 12px", cursor: "pointer" }}>
+                              <Accordion.Trigger style={{ border: 0, padding: "10px 12px", cursor: "pointer" }}>
                                 <Flex align="center" gap="2">
                                   <Checkbox
                                     checked={allInSeasonChecked}
@@ -393,7 +398,7 @@ export const ProfileTabScreen = ({
                               </Accordion.Trigger>
                             </Flex>
                           </Accordion.Header>
-                          <Accordion.Content style={{ padding: "0 12px 10px", display: "grid", gap: 6, background: theme.colors.surfaceMuted }}>
+                          <Accordion.Content style={{ padding: "0 12px 10px", display: "grid", gap: 6 }}>
                             {episodes.map((episode) => (
                               <Flex key={episode.id} justify="between" align="center" gap="2">
                                 <Text size="1">E{episode.episodeNumber} • {episode.title ?? "Untitled"}</Text>
@@ -413,12 +418,12 @@ export const ProfileTabScreen = ({
                     <Button type="button" color="gray" variant="soft" onClick={closeEditor} disabled={saving}>Cancel</Button>
                     <Button type="button" color="green" onClick={() => { void handleSave(); }} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
                   </Flex>
-                </Card>
+                </Flex>
               )}
 
               {formError ? <Text size="1" style={{ color: "var(--red-9)" }}>{formError}</Text> : null}
-            </Card>
-          </Box>
+            </Dialog.Content>
+          </Dialog.Root>
         ) : null}
       </Flex>
 
