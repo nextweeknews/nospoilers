@@ -27,6 +27,7 @@ import { PublicFeedScreen } from "./screens/PublicFeedScreen";
 import { GroupSettingsScreen } from "./screens/GroupSettingsScreen";
 import { ProfileTabScreen, type ShelfItem } from "./screens/ProfileTabScreen";
 import { PostComposerSheet } from "./components/PostComposerSheet";
+import { BrandLogo } from "./components/BrandLogo";
 import {
   CatalogSearchSheet,
   type CatalogImportResponse,
@@ -1905,7 +1906,7 @@ export const App = () => {
             borderBottom: `1px solid ${theme.colors.border}`
           }}
         >
-          <h2 style={{ margin: 0, color: theme.colors.textPrimary, fontSize: 22 }}>NoSpoilers</h2>
+          <BrandLogo accentColor={theme.colors.accent} width={160} style={{ display: "block" }} />
           <input
             type="search"
             value={searchInput}
