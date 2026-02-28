@@ -2007,6 +2007,7 @@ export const App = () => {
                           {/* Titles not yet on the shelf keep an always-visible add affordance so users can act without hunting for a hover menu. */}
                           <DropdownMenu.Trigger
                             aria-label={`Add ${item.title} to shelf`}
+                            // The add button stays visible with a quiet gray treatment, then shifts to solid accent green while active to confirm the click target.
                             onMouseEnter={() => setHoveredGroupCatalogMenuId(rowMenuKey)}
                             onMouseLeave={() => {
                               setHoveredGroupCatalogMenuId((current) => current === rowMenuKey ? null : current);
@@ -2016,9 +2017,9 @@ export const App = () => {
                               width: 28,
                               height: 28,
                               borderRadius: 999,
-                              marginRight: 10,
+                              opacity: 1,
                               border: `1px solid ${isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "var(--gray-a6)"}`,
-                              background: isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "transparent",
+                              background: isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "var(--gray-a3)",
                               color: isRowMenuHovered || isRowMenuOpen ? "white" : "var(--accent-9)",
                               transition: "background-color 120ms ease, border-color 120ms ease, color 120ms ease"
                             }}
@@ -2545,17 +2546,18 @@ const menuItem = (theme: ReturnType<typeof createTheme>): CSSProperties => ({
   cursor: "pointer"
 });
 
-// Row button content uses generous internal spacing so text and avatars remain easy to scan while the row itself stretches edge-to-edge.
+// Row buttons inside list rows claim remaining horizontal space so the right-side menu control sits inside the same row without overflow.
 const sidebarRowButtonReset: CSSProperties = {
-  width: "100%",
+  flex: 1,
+  minWidth: 0,
   border: "none",
   background: "transparent",
-  padding: "16px 18px",
+  padding: 0,
   textAlign: "left",
   cursor: "pointer"
 };
 
-// The menu trigger is intentionally tiny and transparent so it reads as an inline affordance instead of a second list row.
+// The menu trigger keeps a fixed tap target and right padding so it stays inside the column while remaining vertically centered.
 const sidebarIconButtonReset: CSSProperties = {
   border: "none",
   background: "transparent",
@@ -2564,8 +2566,10 @@ const sidebarIconButtonReset: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  marginRight: 12,
+  marginLeft: spacingTokens.sm,
+  marginRight: 6,
   padding: 0,
+  flexShrink: 0,
   cursor: "pointer",
   transition: "color 120ms ease, opacity 120ms ease"
 };
