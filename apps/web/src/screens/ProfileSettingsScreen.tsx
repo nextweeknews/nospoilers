@@ -30,6 +30,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   const [avatarFileName, setAvatarFileName] = useState("avatar.png");
   const [linkPhone, setLinkPhone] = useState("");
   const [linkPhoneOtp, setLinkPhoneOtp] = useState("");
+  const [pendingPhoneVerification, setPendingPhoneVerification] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -46,6 +47,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
     };
   }, [user]);
 
+  // Refreshing from Supabase Auth keeps the UI in sync with identities that can change outside this screen (for example after OAuth redirects).
   const refreshIdentityState = async () => {
     if (!user) return;
     const { data, error } = await getAuthUser();
@@ -129,20 +131,87 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
 
         <Flex gap="2" align="center">
           <Box style={{ flex: 1 }}><TextField.Root value={linkPhone} onChange={(event) => setLinkPhone(event.target.value)} placeholder="+1 555 123 9876" /></Box>
-          <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkPhoneIdentity(linkPhone); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Phone link started. Verify OTP sent to complete linking."); }}>Link phone</Button>
+          <Button onClick={async () => {
+            // Phone linking is intentionally a two-step flow: first request OTP for the number, then verify the OTP before we show it as connected.
+            if (identityStatus.phone) {
+              setStatus("Phone is already connected on this account.");
+              return;
+            }
+            const trimmedPhone = linkPhone.trim();
+            if (trimmedPhone.length < 7) {
+              setStatus("Enter a valid phone number before requesting a code.");
+              return;
+            }
+            await reauthenticateForIdentityLink();
+            const { error } = await linkPhoneIdentity(trimmedPhone);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            setPendingPhoneVerification(true);
+            setStatus("Phone link started. Enter the verification code sent to this number.");
+          }}>Send phone verification code</Button>
         </Flex>
 
         <Flex gap="2" align="center">
           <Box style={{ flex: 1 }}><TextField.Root value={linkPhoneOtp} onChange={(event) => setLinkPhoneOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit SMS code" /></Box>
-          <Button onClick={async () => { if (linkPhoneOtp.length !== 6) { setStatus("Enter the 6-digit code sent to your new phone number."); return; } const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Phone linked and verified."); setLinkPhoneOtp(""); }}>Verify linked phone</Button>
+          <Button onClick={async () => {
+            if (!pendingPhoneVerification) {
+              setStatus("Request a phone verification code first.");
+              return;
+            }
+            if (linkPhoneOtp.length !== 6) {
+              setStatus("Enter the 6-digit code sent to your new phone number.");
+              return;
+            }
+            const { error } = await verifyPhoneChangeOtp(linkPhone.trim(), linkPhoneOtp);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            await refreshIdentityState();
+            setPendingPhoneVerification(false);
+            setStatus("Phone linked and verified.");
+            setLinkPhoneOtp("");
+          }}>Verify linked phone</Button>
         </Flex>
 
-        <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkGoogleIdentity(); if (error) { setStatus(error.message); return; } setStatus("Redirecting to Google to link identity..."); }}>Link Google</Button>
+        <Button onClick={async () => {
+          if (identityStatus.google) {
+            setStatus("Google is already connected on this account.");
+            return;
+          }
+          await reauthenticateForIdentityLink();
+          const { error } = await linkGoogleIdentity();
+          if (error) {
+            setStatus(error.message);
+            return;
+          }
+          setStatus("Redirecting to Google to link identity...");
+        }}>Link Google</Button>
 
         <Flex gap="2" align="center">
           <Box style={{ flex: 1 }}><TextField.Root value={linkEmail} onChange={(event) => setLinkEmail(event.target.value)} placeholder="Email" /></Box>
           <Box style={{ flex: 1 }}><TextField.Root type="password" value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} placeholder="Password" /></Box>
-          <Button onClick={async () => { await reauthenticateForIdentityLink(); const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword); if (error) { setStatus(error.message); return; } await refreshIdentityState(); setStatus("Email/password linked. Check your inbox if verification is required."); }}>Link email/password</Button>
+          <Button onClick={async () => {
+            if (identityStatus.email) {
+              setStatus("Email/password is already connected on this account.");
+              return;
+            }
+            const trimmedEmail = linkEmail.trim().toLowerCase();
+            if (!trimmedEmail || !linkPassword.trim()) {
+              setStatus("Enter both an email and a password to add email/password sign-in.");
+              return;
+            }
+            await reauthenticateForIdentityLink();
+            const { error } = await linkEmailPasswordIdentity(trimmedEmail, linkPassword);
+            if (error) {
+              setStatus(error.message);
+              return;
+            }
+            await refreshIdentityState();
+            setStatus("Email/password linked. Check your inbox if email verification is required.");
+          }}>Link email/password</Button>
         </Flex>
 
         <Separator size="4" />

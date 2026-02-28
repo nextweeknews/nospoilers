@@ -54,7 +54,29 @@ export const reauthenticateForIdentityLink = async () => {
   return authApi.reauthenticate();
 };
 
-export const linkEmailPasswordIdentity = async (email: string, password: string) => authClient.updateUser({ email, password });
+/**
+ * Links email/password credentials to the current user in Supabase Auth.
+ *
+ * We update email and password in separate calls so the app can surface which
+ * step needs user follow-up (for example email verification) instead of hiding
+ * both operations inside one opaque request.
+ */
+export const linkEmailPasswordIdentity = async (email: string, password: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (normalizedEmail.length > 0) {
+    const emailResult = await authClient.updateUser({ email: normalizedEmail });
+    if (emailResult.error) {
+      return emailResult;
+    }
+  }
+
+  if (password.trim().length > 0) {
+    return authClient.updateUser({ password });
+  }
+
+  return { data: { user: null }, error: new Error("Enter an email, a password, or both.") };
+};
 export const updateCurrentUserPassword = async (password: string) => authClient.updateUser({ password });
 
 export const linkPhoneIdentity = async (phone: string) => authClient.updateUser({ phone });
