@@ -1866,6 +1866,7 @@ export const App = () => {
                       }}
                       style={{
                         ...sidebarIconButtonReset,
+                        ...sidebarActionTriggerContainerStyle,
                         opacity:
                           hoveredSidebarItemKey === `group-${group.id}` ||
                           isGroupMenuHovered ||
@@ -1977,6 +1978,7 @@ export const App = () => {
                             }}
                             style={{
                               ...sidebarIconButtonReset,
+                              ...sidebarActionTriggerContainerStyle,
                               opacity: isRowHovered || isRowMenuHovered || isRowMenuOpen ? 1 : 0,
                               color: isRowMenuHovered || isRowMenuOpen ? theme.colors.accent : theme.colors.textSecondary
                             }}
@@ -2014,6 +2016,7 @@ export const App = () => {
                             }}
                             style={{
                               ...sidebarIconButtonReset,
+                              ...sidebarActionTriggerContainerStyle,
                               width: 28,
                               height: 28,
                               borderRadius: 999,
@@ -2572,6 +2575,13 @@ const sidebarIconButtonReset: CSSProperties = {
   flexShrink: 0,
   cursor: "pointer",
   transition: "color 120ms ease, opacity 120ms ease"
+};
+
+// Sidebar row actions use shared spacing so controls remain inside the column and labels can wrap cleanly when space is tight.
+const sidebarActionTriggerContainerStyle: CSSProperties = {
+  marginLeft: spacingTokens.sm,
+  marginRight: 6,
+  flexShrink: 0
 };
 
 const SidebarItemContent = ({
