@@ -31,6 +31,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
   const [username, setUsername] = useState("");
   const [linkPhone, setLinkPhone] = useState("");
   const [linkPhoneOtp, setLinkPhoneOtp] = useState("");
+  const [pendingPhoneVerification, setPendingPhoneVerification] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
   const [linkPassword, setLinkPassword] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -45,6 +46,7 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
     };
   }, [user]);
 
+  // We re-read identities from Supabase Auth after link operations so this screen reflects the canonical auth state.
   const refreshIdentityState = async () => {
     if (!user) {
       return;
@@ -167,17 +169,27 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
+            // Phone linking intentionally follows the Supabase two-step flow: request OTP first, then verify OTP to finish linking.
+            if (identityStatus.phone) {
+              setStatus("Phone is already connected on this account.");
+              return;
+            }
+            const trimmedPhone = linkPhone.trim();
+            if (trimmedPhone.length < 7) {
+              setStatus("Enter a valid phone number before requesting a code.");
+              return;
+            }
             await reauthenticateForIdentityLink();
-            const { error } = await linkPhoneIdentity(linkPhone);
+            const { error } = await linkPhoneIdentity(trimmedPhone);
             if (error) {
               setStatus(error.message);
               return;
             }
-            await refreshIdentityState();
-            setStatus("Phone link started. Verify OTP sent to complete linking.");
+            setPendingPhoneVerification(true);
+            setStatus("Phone link started. Enter the verification code sent to this number.");
           }}
         >
-          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Link phone</AppText>
+          <AppText style={[styles.buttonText, { color: theme.colors.accentText }]}>Send phone verification code</AppText>
         </Pressable>
 
 
@@ -185,18 +197,23 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
+            if (!pendingPhoneVerification) {
+              setStatus("Request a phone verification code first.");
+              return;
+            }
             if (linkPhoneOtp.length !== 6) {
               setStatus("Enter the 6-digit code sent to your new phone number.");
               return;
             }
 
-            const { error } = await verifyPhoneChangeOtp(linkPhone, linkPhoneOtp);
+            const { error } = await verifyPhoneChangeOtp(linkPhone.trim(), linkPhoneOtp);
             if (error) {
               setStatus(error.message);
               return;
             }
 
             await refreshIdentityState();
+            setPendingPhoneVerification(false);
             setStatus("Phone linked and verified.");
             setLinkPhoneOtp("");
           }}
@@ -206,6 +223,10 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
+            if (identityStatus.google) {
+              setStatus("Google is already connected on this account.");
+              return;
+            }
             await reauthenticateForIdentityLink();
             const { data, error } = await linkGoogleIdentity();
             if (error || !data?.url) {
@@ -237,8 +258,17 @@ export const ProfileSettingsScreen = ({ user, onProfileUpdated, onAccountDeleted
         <Pressable
           style={[styles.button, { backgroundColor: theme.colors.accent }]}
           onPress={async () => {
+            if (identityStatus.email) {
+              setStatus("Email/password is already connected on this account.");
+              return;
+            }
+            const trimmedEmail = linkEmail.trim().toLowerCase();
+            if (!trimmedEmail || !linkPassword.trim()) {
+              setStatus("Enter both an email and a password to add email/password sign-in.");
+              return;
+            }
             await reauthenticateForIdentityLink();
-            const { error } = await linkEmailPasswordIdentity(linkEmail, linkPassword);
+            const { error } = await linkEmailPasswordIdentity(trimmedEmail, linkPassword);
             if (error) {
               setStatus(error.message);
               return;

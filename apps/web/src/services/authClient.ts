@@ -82,8 +82,30 @@ export const reauthenticateForIdentityLink = async () => {
   return authApi.reauthenticate();
 };
 
-export const linkEmailPasswordIdentity = async (email: string, password: string) =>
-  authClient.updateUser({ email, password });
+/**
+ * Links email/password credentials to the currently signed-in account.
+ *
+ * Supabase supports adding a password to OAuth users by calling updateUser({ password }).
+ * Setting email and password in separate calls keeps each step explicit and gives clearer
+ * error messages when one field succeeds but the other needs user action (for example,
+ * email verification).
+ */
+export const linkEmailPasswordIdentity = async (email: string, password: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (normalizedEmail.length > 0) {
+    const emailResult = await authClient.updateUser({ email: normalizedEmail });
+    if (emailResult.error) {
+      return emailResult;
+    }
+  }
+
+  if (password.trim().length > 0) {
+    return authClient.updateUser({ password });
+  }
+
+  return { data: { user: null }, error: new Error("Enter an email, a password, or both.") };
+};
 
 export const updateCurrentUserPassword = async (password: string) =>
   authClient.updateUser({ password });
