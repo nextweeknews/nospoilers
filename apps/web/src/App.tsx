@@ -68,6 +68,7 @@ type GroupCatalogItem = {
   groupId: string;
   catalogItemId: string;
   title: string;
+  itemType: "book" | "tv_show";
   coverImageUrl?: string;
 };
 
@@ -807,7 +808,7 @@ export const App = () => {
       if (activeGroupIds.length) {
         const groupCatalogResult = await supabaseClient
           .from("group_catalog_items")
-          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title,cover_image_url)")
+          .select("group_id,catalog_item_id,catalog_items!group_catalog_items_catalog_item_id_fkey(title,item_type,cover_image_url)")
           .in("group_id", activeGroupIds)
           .eq("is_active", true)
           .order("added_at", { ascending: false });
@@ -817,10 +818,11 @@ export const App = () => {
           setGroupCatalogItems([]);
         } else {
           setGroupCatalogItems(
-            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null; cover_image_url?: string | null } | null }> | null) ?? [])).map((row) => ({
+            (((groupCatalogResult.data as Array<{ group_id: string | number; catalog_item_id: string | number; catalog_items?: { title?: string | null; item_type?: "book" | "tv_show" | null; cover_image_url?: string | null } | null }> | null) ?? [])).map((row) => ({
               groupId: String(row.group_id),
               catalogItemId: String(row.catalog_item_id),
               title: row.catalog_items?.title?.trim() || `Catalog #${row.catalog_item_id}`,
+              itemType: row.catalog_items?.item_type === "tv_show" ? "tv_show" : "book",
               coverImageUrl: row.catalog_items?.cover_image_url ?? undefined
             }))
           );
@@ -1106,10 +1108,31 @@ export const App = () => {
   const selectedGroup = selectedGroupId ? groups.find((group) => String(group.id) === selectedGroupId) : undefined;
   const shelfPreviewItems = useMemo(() => shelfItems.slice(0, 6), [shelfItems]);
 
-  const selectedGroupCatalogItems = selectedGroupId
-    ? groupCatalogItems.filter((item) => item.groupId === selectedGroupId)
-    : [];
   const shelfItemsByCatalogId = useMemo(() => new Map(shelfItems.map((item) => [item.catalogItemId, item])), [shelfItems]);
+  const selectedGroupCatalogItems = useMemo(() => {
+    if (!selectedGroupId) {
+      return [] as Array<GroupCatalogItem & { isOnShelf: boolean; shelfItem?: ShelfItem }>;
+    }
+
+    // This keeps group titles that are also on the viewer's shelf at the top, while still preserving
+    // recency ordering within each section so familiar items remain easy to locate.
+    return groupCatalogItems
+      .filter((item) => item.groupId === selectedGroupId)
+      .map((item) => {
+        const shelfItem = shelfItemsByCatalogId.get(item.catalogItemId);
+        return {
+          ...item,
+          isOnShelf: Boolean(shelfItem),
+          shelfItem
+        };
+      })
+      .sort((left, right) => {
+        if (left.isOnShelf === right.isOnShelf) {
+          return 0;
+        }
+        return left.isOnShelf ? -1 : 1;
+      });
+  }, [groupCatalogItems, selectedGroupId, shelfItemsByCatalogId]);
   const applyViewerPostVisibility = (candidatePosts: PostEntity[]): PostEntity[] =>
     candidatePosts.reduce<PostEntity[]>((acc, post) => {
       const catalogItemId = String((post as { catalog_item_id?: string | number | null }).catalog_item_id ?? "");
@@ -1157,6 +1180,52 @@ export const App = () => {
     setMainView("profile");
     setShowProfileSettings(false);
     setRequestedShelfEditorItemId(catalogItemId);
+  };
+
+  const addCatalogItemToShelf = async (item: Pick<GroupCatalogItem, "catalogItemId" | "title" | "itemType" | "coverImageUrl">) => {
+    if (!currentUser) return;
+
+    const catalogItemId = Number(item.catalogItemId);
+    if (!Number.isFinite(catalogItemId)) return;
+
+    const { error } = await supabaseClient.from("user_media_progress").upsert(
+      {
+        user_id: currentUser.id,
+        catalog_item_id: catalogItemId,
+        status: "in_progress",
+        current_sequence_index: 0,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "user_id,catalog_item_id" }
+    );
+
+    if (error) {
+      setAuthStatus(`Unable to add to shelf: ${error.message}`);
+      return;
+    }
+
+    // New shelf rows are inserted at the top so the just-added title is immediately visible in shelf-based flows.
+    setShelfItems((prev) => {
+      const next = prev.filter((entry) => entry.catalogItemId !== item.catalogItemId);
+      return [{
+        catalogItemId: item.catalogItemId,
+        title: item.title,
+        itemType: item.itemType,
+        coverImageUrl: item.coverImageUrl,
+        status: "in_progress",
+        addedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+        progressSummary: item.itemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+        progressPercent: 0,
+        currentPage: null,
+        pageCount: null,
+        currentSeasonNumber: null,
+        currentEpisodeNumber: null,
+        progressPercentValue: null,
+        tvProgressUnits: []
+      }, ...next];
+    });
   };
 
   const onSaveShelfProgress = async ({
@@ -2329,7 +2398,13 @@ export const App = () => {
 
             setGroupCatalogItems((prev) => {
               const next = prev.filter((entry) => !(entry.groupId === String(groupId) && entry.catalogItemId === String(catalogItemId)));
-              return [{ groupId: String(groupId), catalogItemId: String(catalogItemId), title: imported.catalog_item.title }, ...next];
+              return [{
+                groupId: String(groupId),
+                catalogItemId: String(catalogItemId),
+                title: imported.catalog_item.title,
+                itemType: imported.catalog_item.item_type === "tv_show" ? "tv_show" : "book",
+                coverImageUrl: imported.catalog_item.cover_image_url ?? undefined
+              }, ...next];
             });
           }}
           onError={(message) => {
@@ -2554,7 +2629,7 @@ const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, h
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : "transparent",
+  background: active ? `${theme.colors.accent}1F` : hovered ? `${theme.colors.accent}10` : neutralTint,
   color: active ? theme.colors.accent : hovered ? theme.colors.textPrimary : theme.colors.textPrimary,
   transition: "background-color 120ms ease, color 120ms ease"
 });
