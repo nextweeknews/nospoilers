@@ -14,6 +14,7 @@ import {
   updateCurrentUserPassword,
   verifySmsOtp
 } from "../services/authClient";
+import { BrandLogo } from "../components/BrandLogo";
 
 type CountryOption = {
   code: string;
@@ -438,23 +439,12 @@ export const LoginScreen = ({ onSignedIn, theme }: LoginScreenProps) => {
       }}
     >
       <Flex direction="column" align="center" gap="2" style={{ textAlign: "center" }}>
-        <div
-          style={{
-            margin: "0 auto",
-            width: 62,
-            height: 62,
-            borderRadius: 18,
-            background: theme.colors.accent,
-            color: theme.colors.accentText,
-            display: "grid",
-            placeItems: "center",
-            fontSize: 30,
-            fontWeight: 700
-          }}
-        >
-          N
-        </div>
-        <Heading as="h1" size="6" style={{ margin: 0, color: theme.colors.textPrimary }}>NoSpoilers</Heading>
+        <BrandLogo
+          accentColor={theme.colors.accent}
+          width={188}
+          style={{ margin: "0 auto", display: "block" }}
+        />
+        <Heading as="h1" size="6" style={{ margin: 0, color: theme.colors.textPrimary }}>Welcome back</Heading>
         <Text size="2" style={{ margin: 0, color: theme.colors.textSecondary }}>Sign in to join your spoiler-safe feed</Text>
       </Flex>
 
