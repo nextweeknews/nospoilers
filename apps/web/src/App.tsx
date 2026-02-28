@@ -346,8 +346,8 @@ export const App = () => {
   const [hoveredSidebarItemKey, setHoveredSidebarItemKey] = useState<string | null>(null);
   const [hoveredGroupMenuId, setHoveredGroupMenuId] = useState<string | null>(null);
   const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
-  const [hoveredGroupCatalogActionId, setHoveredGroupCatalogActionId] = useState<string | null>(null);
-  const [openGroupCatalogActionId, setOpenGroupCatalogActionId] = useState<string | null>(null);
+  const [hoveredGroupCatalogMenuId, setHoveredGroupCatalogMenuId] = useState<string | null>(null);
+  const [openGroupCatalogMenuId, setOpenGroupCatalogMenuId] = useState<string | null>(null);
   const [trendingTimeframe, setTrendingTimeframe] = useState<TrendingTimeframe>("all_time");
   const [trendingTypeFilter, setTrendingTypeFilter] = useState<TrendingTypeFilter>("all");
   const [trendingItems, setTrendingItems] = useState<TrendingItem[]>([]);
@@ -1182,19 +1182,11 @@ export const App = () => {
     setRequestedShelfEditorItemId(catalogItemId);
   };
 
-  // This shared helper keeps shelf inserts identical whether someone adds from group menus or catalog search.
-  const addCatalogItemToShelf = async (item: {
-    catalogItemId: string;
-    title: string;
-    itemType?: "book" | "tv_show";
-    coverImageUrl?: string;
-  }) => {
+  const addCatalogItemToShelf = async (item: Pick<GroupCatalogItem, "catalogItemId" | "title" | "itemType" | "coverImageUrl">) => {
     if (!currentUser) return;
 
     const catalogItemId = Number(item.catalogItemId);
     if (!Number.isFinite(catalogItemId)) return;
-
-    const normalizedItemType = item.itemType ?? "book";
 
     const { error } = await supabaseClient.from("user_media_progress").upsert(
       {
@@ -1209,7 +1201,6 @@ export const App = () => {
 
     if (error) {
       setAuthStatus(`Unable to add to shelf: ${error.message}`);
-      setCatalogSearchError(error.message);
       return;
     }
 
@@ -1219,13 +1210,13 @@ export const App = () => {
       return [{
         catalogItemId: item.catalogItemId,
         title: item.title,
-        itemType: normalizedItemType,
+        itemType: item.itemType,
         coverImageUrl: item.coverImageUrl,
         status: "in_progress",
         addedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         completedAt: null,
-        progressSummary: normalizedItemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+        progressSummary: item.itemType === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
         progressPercent: 0,
         currentPage: null,
         pageCount: null,
@@ -1846,12 +1837,12 @@ export const App = () => {
                   key={group.id}
                   onMouseEnter={() => setHoveredSidebarItemKey(`group-${group.id}`)}
                   onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-${group.id}` ? null : current)}
-                  style={listItemStyle(theme, active, hoveredSidebarItemKey === `group-${group.id}`, true)}
+                  style={listItemStyle(theme, active, hoveredSidebarItemKey === `group-${group.id}`)}
                 >
                   <button
                     type="button"
                     onClick={() => { setMainView("groups"); setSelectedGroupId(String(group.id)); setSelectedGroupCatalogItemId(null); setShowProfileSettings(false); }}
-                    style={{ ...sidebarRowButtonReset, width: "auto", flex: 1, minWidth: 0, color: "inherit" }}
+                    style={{ ...sidebarRowButtonReset, color: "inherit" }}
                   >
                     <SidebarItemContent
                       label={group.name}
@@ -1945,74 +1936,103 @@ export const App = () => {
                 >
                   <SidebarItemContent label="Home" iconText={HOME_ICON} theme={theme} />
                 </button>
-                {selectedGroupCatalogItems.map((item) => (
-                  <div
-                    key={`${item.groupId}-${item.catalogItemId}`}
-                    onMouseEnter={() => setHoveredSidebarItemKey(`group-catalog-${item.groupId}-${item.catalogItemId}`)}
-                    onMouseLeave={() => setHoveredSidebarItemKey((current) => current === `group-catalog-${item.groupId}-${item.catalogItemId}` ? null : current)}
-                    style={listItemStyle(theme, selectedGroupCatalogItemId === item.catalogItemId, hoveredSidebarItemKey === `group-catalog-${item.groupId}-${item.catalogItemId}`, true)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
-                      style={{ ...sidebarRowButtonReset, width: "auto", flex: 1, minWidth: 0, color: "inherit" }}
-                    >
-                      <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
-                    </button>
-                    {(() => {
-                      const actionId = `${item.groupId}-${item.catalogItemId}`;
-                      const shelfItem = shelfItemsByCatalogId.get(item.catalogItemId);
-                      const isActionHovered = hoveredGroupCatalogActionId === actionId;
-                      const isActionOpen = openGroupCatalogActionId === actionId;
-                      if (shelfItem) {
-                        return (
-                          <DropdownMenu.Root open={isActionOpen} onOpenChange={(nextOpen) => setOpenGroupCatalogActionId(nextOpen ? actionId : null)}>
-                            <DropdownMenu.Trigger
-                              aria-label={`Open ${item.title} shelf actions`}
-                              onMouseEnter={() => setHoveredGroupCatalogActionId(actionId)}
-                              onMouseLeave={() => setHoveredGroupCatalogActionId((current) => current === actionId ? null : current)}
-                              style={{
-                                ...sidebarIconButtonReset,
-                                opacity: hoveredSidebarItemKey === `group-catalog-${item.groupId}-${item.catalogItemId}` || isActionHovered || isActionOpen ? 1 : 0,
-                                color: isActionHovered || isActionOpen ? theme.colors.accent : theme.colors.textSecondary
-                              }}
-                            >
-                              <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
-                            </DropdownMenu.Trigger>
-                            <DropdownMenu.Content align="end">
-                              {/* This confirmation route prevents accidental removals from one click in a dense navigation list. */}
-                              <DropdownMenu.Item onSelect={() => setPendingSidebarShelfRemoval(shelfItem)} color="red">Remove from shelf</DropdownMenu.Item>
-                            </DropdownMenu.Content>
-                          </DropdownMenu.Root>
-                        );
-                      }
+                {selectedGroupCatalogItems.map((item) => {
+                  const rowKey = `${item.groupId}-${item.catalogItemId}`;
+                  const rowHoverKey = `group-catalog-${rowKey}`;
+                  const rowMenuKey = `group-catalog-menu-${rowKey}`;
+                  const isRowHovered = hoveredSidebarItemKey === rowHoverKey;
+                  const isRowMenuHovered = hoveredGroupCatalogMenuId === rowMenuKey;
+                  const isRowMenuOpen = openGroupCatalogMenuId === rowMenuKey;
 
-                      return (
-                        <DropdownMenu.Root open={isActionOpen} onOpenChange={(nextOpen) => setOpenGroupCatalogActionId(nextOpen ? actionId : null)}>
+                  return (
+                    <div
+                      key={rowKey}
+                      onMouseEnter={() => setHoveredSidebarItemKey(rowHoverKey)}
+                      onMouseLeave={() => setHoveredSidebarItemKey((current) => current === rowHoverKey ? null : current)}
+                      style={listItemStyle(
+                        theme,
+                        selectedGroupCatalogItemId === item.catalogItemId,
+                        isRowHovered,
+                        item.isOnShelf ? `${RADIX_ACCENT_TINT}` : "var(--gray-a3)"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGroupCatalogItemId(item.catalogItemId)}
+                        style={{ ...sidebarRowButtonReset, color: "inherit" }}
+                      >
+                        <SidebarItemContent label={item.title} artworkUrl={item.coverImageUrl} theme={theme} />
+                      </button>
+                      {item.isOnShelf && item.shelfItem ? (
+                        <DropdownMenu.Root
+                          open={isRowMenuOpen}
+                          onOpenChange={(nextOpen) => setOpenGroupCatalogMenuId(nextOpen ? rowMenuKey : null)}
+                        >
+                          {/* Shelf-owned group titles mirror the primary group menu affordance so actions feel familiar. */}
                           <DropdownMenu.Trigger
-                            aria-label={`Add ${item.title} to shelf`}
-                            onMouseEnter={() => setHoveredGroupCatalogActionId(actionId)}
-                            onMouseLeave={() => setHoveredGroupCatalogActionId((current) => current === actionId ? null : current)}
+                            aria-label={`Open ${item.title} shelf actions`}
+                            onMouseEnter={() => setHoveredGroupCatalogMenuId(rowMenuKey)}
+                            onMouseLeave={() => {
+                              setHoveredGroupCatalogMenuId((current) => current === rowMenuKey ? null : current);
+                            }}
                             style={{
                               ...sidebarIconButtonReset,
-                              opacity: 1,
-                              borderRadius: 999,
-                              background: isActionHovered || isActionOpen ? "var(--green-9)" : "var(--gray-4)",
-                              color: isActionHovered || isActionOpen ? "white" : "var(--accent-9)"
+                              opacity: isRowHovered || isRowMenuHovered || isRowMenuOpen ? 1 : 0,
+                              color: isRowMenuHovered || isRowMenuOpen ? theme.colors.accent : theme.colors.textSecondary
                             }}
                           >
-                            <PlusIcon width={16} height={16} aria-hidden="true" />
+                            <DotsHorizontalIcon width={18} height={18} aria-hidden="true" />
                           </DropdownMenu.Trigger>
                           <DropdownMenu.Content align="end">
-                            <DropdownMenu.Item onSelect={() => void addCatalogItemToShelf({ catalogItemId: item.catalogItemId, title: item.title, coverImageUrl: item.coverImageUrl })}>
-                              Add to shelf
+                            <DropdownMenu.Item onSelect={() => requestShelfEditor(item.catalogItemId)}>Edit progress</DropdownMenu.Item>
+                            <DropdownMenu.Item
+                              color="red"
+                              onSelect={(event) => {
+                                event.preventDefault();
+                                // This routes through the same confirm dialog used elsewhere so accidental removals need explicit approval.
+                                setPendingSidebarShelfRemoval(item.shelfItem ?? null);
+                                setOpenGroupCatalogMenuId(null);
+                                setHoveredGroupCatalogMenuId(null);
+                              }}
+                            >
+                              Remove from shelf
                             </DropdownMenu.Item>
                           </DropdownMenu.Content>
                         </DropdownMenu.Root>
-                      );
-                    })()}
-                  </div>
-                ))}
+                      ) : (
+                        <DropdownMenu.Root
+                          open={isRowMenuOpen}
+                          onOpenChange={(nextOpen) => setOpenGroupCatalogMenuId(nextOpen ? rowMenuKey : null)}
+                        >
+                          {/* Titles not yet on the shelf keep an always-visible add affordance so users can act without hunting for a hover menu. */}
+                          <DropdownMenu.Trigger
+                            aria-label={`Add ${item.title} to shelf`}
+                            onMouseEnter={() => setHoveredGroupCatalogMenuId(rowMenuKey)}
+                            onMouseLeave={() => {
+                              setHoveredGroupCatalogMenuId((current) => current === rowMenuKey ? null : current);
+                            }}
+                            style={{
+                              ...sidebarIconButtonReset,
+                              width: 28,
+                              height: 28,
+                              borderRadius: 999,
+                              marginRight: 10,
+                              border: `1px solid ${isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "var(--gray-a6)"}`,
+                              background: isRowMenuHovered || isRowMenuOpen ? "var(--accent-9)" : "transparent",
+                              color: isRowMenuHovered || isRowMenuOpen ? "white" : "var(--accent-9)",
+                              transition: "background-color 120ms ease, border-color 120ms ease, color 120ms ease"
+                            }}
+                          >
+                            <PlusIcon width={14} height={14} aria-hidden="true" />
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end">
+                            <DropdownMenu.Item onSelect={() => void addCatalogItemToShelf(item)}>Add to shelf</DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Root>
+                      )}
+                    </div>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => {
@@ -2327,11 +2347,44 @@ export const App = () => {
           onClose={closeCatalogSearch}
           onImported={handleCatalogImported}
           onAddToShelf={async (imported) => {
-            await addCatalogItemToShelf({
-              catalogItemId: String(imported.catalog_item.id),
-              title: imported.catalog_item.title,
-              itemType: imported.catalog_item.item_type === "tv_show" ? "tv_show" : "book",
-              coverImageUrl: imported.catalog_item.cover_image_url ?? undefined
+            if (!currentUser) return;
+            const catalogItemId = imported.catalog_item.id;
+            const { error } = await supabaseClient.from("user_media_progress").upsert(
+              {
+                user_id: currentUser.id,
+                catalog_item_id: catalogItemId,
+                status: "in_progress",
+                current_sequence_index: 0,
+                updated_at: new Date().toISOString()
+              },
+              { onConflict: "user_id,catalog_item_id" }
+            );
+
+            if (error) {
+              setCatalogSearchError(error.message);
+              return;
+            }
+
+            setShelfItems((prev) => {
+              const next = prev.filter((entry) => entry.catalogItemId !== String(catalogItemId));
+              return [{
+                catalogItemId: String(catalogItemId),
+                title: imported.catalog_item.title,
+                itemType: imported.catalog_item.item_type === "tv_show" ? "tv_show" : "book",
+                coverImageUrl: imported.catalog_item.cover_image_url ?? undefined,
+                status: "in_progress",
+                addedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                completedAt: null,
+                progressSummary: imported.catalog_item.item_type === "tv_show" ? "Season 1, Episode 1" : "Page 0/?",
+                progressPercent: 0,
+                currentPage: null,
+                pageCount: null,
+                currentSeasonNumber: null,
+                currentEpisodeNumber: null,
+                progressPercentValue: null,
+                tvProgressUnits: []
+              }, ...next];
             });
           }}
           onAddToGroup={async (imported, _selected, groupId) => {
@@ -2511,7 +2564,7 @@ const sidebarIconButtonReset: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  marginRight: 18,
+  marginRight: 12,
   padding: 0,
   cursor: "pointer",
   transition: "color 120ms ease, opacity 120ms ease"
@@ -2574,10 +2627,14 @@ const SidebarItemContent = ({
   );
 };
 
-const listItemStyle = (theme: ReturnType<typeof createTheme>, active: boolean, hovered = false, hasInlineAction = false): CSSProperties => ({
+const listItemStyle = (
+  theme: ReturnType<typeof createTheme>,
+  active: boolean,
+  hovered = false,
+  neutralTint = "transparent"
+): CSSProperties => ({
   ...menuItem(theme),
-  // Rows with right-side action buttons reserve horizontal room so icons stay inside the sidebar column.
-  padding: hasInlineAction ? "10px 0 10px 18px" : "16px 18px",
+  padding: "16px 18px",
   fontSize: 16,
   fontWeight: 500,
   borderRadius: 0,
